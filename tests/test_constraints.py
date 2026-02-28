@@ -12,6 +12,7 @@ from app.core.schemas import (
     FundMetrics,
     MandateConfig,
     MetricId,
+    MetricResult,
     NormalizedFund,
 )
 from app.core.scoring.ranking import rank_universe
@@ -42,16 +43,26 @@ def _make_fund(
     )
 
 
+def _make_metric_result(metric_id: MetricId, value: float) -> MetricResult:
+    return MetricResult(
+        metric_id=metric_id,
+        value=value,
+        period_start="2022-01",
+        period_end="2022-12",
+        formula_text="test",
+    )
+
+
 def _make_metrics(name: str = "Test Fund", dd: float = -0.10, vol: float = 0.12) -> FundMetrics:
     return FundMetrics(
         fund_name=name,
-        metrics={
-            MetricId.ANNUALIZED_RETURN: 0.08,
-            MetricId.ANNUALIZED_VOLATILITY: vol,
-            MetricId.SHARPE_RATIO: 0.67,
-            MetricId.MAX_DRAWDOWN: dd,
-            MetricId.BENCHMARK_CORRELATION: 0.75,
-        },
+        metric_results=[
+            _make_metric_result(MetricId.ANNUALIZED_RETURN, 0.08),
+            _make_metric_result(MetricId.ANNUALIZED_VOLATILITY, vol),
+            _make_metric_result(MetricId.SHARPE_RATIO, 0.67),
+            _make_metric_result(MetricId.MAX_DRAWDOWN, dd),
+            _make_metric_result(MetricId.BENCHMARK_CORRELATION, 0.75),
+        ],
         date_range_start="2022-01",
         date_range_end="2022-12",
         month_count=12,
@@ -151,27 +162,27 @@ class TestRanking:
     def test_ranking_produces_all_funds(self):
         universe, all_metrics = self._load_universe_and_metrics()
         mandate = MandateConfig()
-        ranked = rank_universe(universe, all_metrics, mandate)
+        ranked, run_candidates = rank_universe(universe, all_metrics, mandate)
         assert len(ranked) == 3
 
     def test_ranks_are_sequential(self):
         universe, all_metrics = self._load_universe_and_metrics()
         mandate = MandateConfig()
-        ranked = rank_universe(universe, all_metrics, mandate)
+        ranked, _ = rank_universe(universe, all_metrics, mandate)
         assert [sf.rank for sf in ranked] == [1, 2, 3]
 
     def test_ranking_is_deterministic(self):
         universe, all_metrics = self._load_universe_and_metrics()
         mandate = MandateConfig()
-        run1 = rank_universe(universe, all_metrics, mandate)
-        run2 = rank_universe(universe, all_metrics, mandate)
+        run1, _ = rank_universe(universe, all_metrics, mandate)
+        run2, _ = rank_universe(universe, all_metrics, mandate)
         assert [sf.fund_name for sf in run1] == [sf.fund_name for sf in run2]
 
     def test_constraint_failure_pushes_to_bottom(self):
         universe, all_metrics = self._load_universe_and_metrics()
         # Exclude "Global Macro" — Birch should be pushed to bottom
         mandate = MandateConfig(strategy_exclude=["Global Macro"])
-        ranked = rank_universe(universe, all_metrics, mandate)
+        ranked, _ = rank_universe(universe, all_metrics, mandate)
         birch = next(sf for sf in ranked if sf.fund_name == "Birch Global Macro")
         assert not birch.all_constraints_passed
         assert birch.rank == 3
@@ -179,11 +190,15 @@ class TestRanking:
     def test_weight_sensitivity(self):
         """Changing weights should change scores for non-dominant funds."""
         universe, all_metrics = self._load_universe_and_metrics()
-        ranked_a = rank_universe(
-            universe, all_metrics, MandateConfig(weight_return=1.0, weight_sharpe=0.0, weight_drawdown_penalty=0.0)
+        ranked_a, _ = rank_universe(
+            universe,
+            all_metrics,
+            MandateConfig(weights={MetricId.ANNUALIZED_RETURN: 1.0}),
         )
-        ranked_b = rank_universe(
-            universe, all_metrics, MandateConfig(weight_return=0.0, weight_sharpe=0.0, weight_drawdown_penalty=1.0)
+        ranked_b, _ = rank_universe(
+            universe,
+            all_metrics,
+            MandateConfig(weights={MetricId.MAX_DRAWDOWN: 1.0}),
         )
         # Second-place fund should have different scores under different weights
         scores_a = {sf.fund_name: sf.composite_score for sf in ranked_a}
@@ -191,3 +206,24 @@ class TestRanking:
         # At least one non-top fund should differ
         diffs = [scores_a[n] != scores_b[n] for n in scores_a if scores_a[n] < 1.0 or scores_b[n] < 1.0]
         assert any(diffs)
+
+    def test_run_candidates_track_exclusions(self):
+        """Funds with insufficient history should appear in run_candidates as excluded."""
+        universe, _ = self._load_universe_and_metrics()
+        # Use high min_history so all are insufficient
+        all_metrics = compute_all_metrics(universe.funds, min_history_months=36)
+        mandate = MandateConfig()
+        ranked, run_candidates = rank_universe(universe, all_metrics, mandate)
+        assert len(ranked) == 0
+        assert len(run_candidates) == 3
+        assert all(not rc.included for rc in run_candidates)
+
+    def test_score_breakdown_present(self):
+        """Each scored fund should have a non-empty score breakdown."""
+        universe, all_metrics = self._load_universe_and_metrics()
+        mandate = MandateConfig()
+        ranked, _ = rank_universe(universe, all_metrics, mandate)
+        for sf in ranked:
+            assert len(sf.score_breakdown) > 0
+            total = sum(sc.weighted_contribution for sc in sf.score_breakdown)
+            assert abs(total - sf.composite_score) < 1e-6

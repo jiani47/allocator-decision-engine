@@ -11,7 +11,7 @@ class TargetVolatilityConstraint(BaseConstraint):
         self._target = target_volatility
 
     def evaluate(self, fund: NormalizedFund, metrics: FundMetrics) -> ConstraintResult:
-        actual_vol = metrics.metrics.get(MetricId.ANNUALIZED_VOLATILITY, 0.0)
+        actual_vol = metrics.get_value(MetricId.ANNUALIZED_VOLATILITY) or 0.0
         passed = actual_vol <= self._target
         return ConstraintResult(
             constraint_name="target_volatility",

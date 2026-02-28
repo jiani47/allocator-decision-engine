@@ -20,11 +20,15 @@ def normalize_metric_scores(
     For drawdown (negative), inversion ensures less-negative = higher score.
     """
     values = {
-        fm.fund_name: fm.metrics.get(metric_id, float("nan")) for fm in all_metrics
+        fm.fund_name: fm.get_value(metric_id) for fm in all_metrics
     }
 
-    # Filter out NaN
-    valid = {name: v for name, v in values.items() if not math.isnan(v)}
+    # Filter out None and NaN
+    valid = {
+        name: v
+        for name, v in values.items()
+        if v is not None and not math.isnan(v)
+    }
     if not valid:
         return {name: 0.0 for name in values}
 

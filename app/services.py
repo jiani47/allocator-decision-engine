@@ -27,6 +27,7 @@ from app.core.schemas import (
     MandateConfig,
     MemoOutput,
     NormalizedUniverse,
+    RunCandidate,
     ScoredFund,
 )
 from app.core.scoring.ranking import rank_universe
@@ -89,7 +90,7 @@ def step_rank(
     universe: NormalizedUniverse,
     all_metrics: list[FundMetrics],
     mandate: MandateConfig,
-) -> list[ScoredFund]:
+) -> tuple[list[ScoredFund], list[RunCandidate]]:
     """Rank universe with constraints and weights."""
     return rank_universe(universe, all_metrics, mandate)
 
@@ -117,6 +118,7 @@ def step_create_run(
     benchmark: BenchmarkSeries | None,
     mandate: MandateConfig,
     all_fund_metrics: list[FundMetrics],
+    run_candidates: list[RunCandidate],
     ranked_shortlist: list[ScoredFund],
     memo: MemoOutput | None = None,
     fact_pack: FactPack | None = None,
@@ -127,6 +129,7 @@ def step_create_run(
         benchmark=benchmark,
         mandate=mandate,
         all_fund_metrics=all_fund_metrics,
+        run_candidates=run_candidates,
         ranked_shortlist=ranked_shortlist,
         memo=memo,
         fact_pack=fact_pack,

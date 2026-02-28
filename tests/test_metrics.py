@@ -143,10 +143,10 @@ class TestComputeAllMetrics:
         assert len(all_metrics) == 3
 
         for fm in all_metrics:
-            assert MetricId.ANNUALIZED_RETURN in fm.metrics
-            assert MetricId.ANNUALIZED_VOLATILITY in fm.metrics
-            assert MetricId.SHARPE_RATIO in fm.metrics
-            assert MetricId.MAX_DRAWDOWN in fm.metrics
+            assert fm.get_value(MetricId.ANNUALIZED_RETURN) is not None
+            assert fm.get_value(MetricId.ANNUALIZED_VOLATILITY) is not None
+            assert fm.get_value(MetricId.SHARPE_RATIO) is not None
+            assert fm.get_value(MetricId.MAX_DRAWDOWN) is not None
             assert fm.month_count == 24
             assert not fm.insufficient_history
 
@@ -162,8 +162,10 @@ class TestComputeAllMetrics:
 
         for m1, m2 in zip(run1, run2):
             for metric_id in MetricId:
-                v1, v2 = m1.metrics[metric_id], m2.metrics[metric_id]
-                if np.isnan(v1):
+                v1, v2 = m1.get_value(metric_id), m2.get_value(metric_id)
+                if v1 is None:
+                    assert v2 is None
+                elif np.isnan(v1):
                     assert np.isnan(v2)
                 else:
                     assert v1 == v2
@@ -179,3 +181,24 @@ class TestComputeAllMetrics:
         all_metrics = compute_all_metrics(universe.funds, min_history_months=36)
         for fm in all_metrics:
             assert fm.insufficient_history
+
+    def test_metric_results_have_lineage(self):
+        """Each MetricResult should carry formula_text and period info."""
+        content = (FIXTURES / "01_clean_universe.csv").read_bytes()
+        df = read_csv(content, "01_clean_universe.csv")
+        mapping = infer_column_mapping(df)
+        universe = build_normalized_universe(df, mapping, file_hash(content))
+
+        all_metrics = compute_all_metrics(universe.funds)
+        fm = all_metrics[0]
+
+        for mr in fm.metric_results:
+            assert mr.formula_text != ""
+            assert mr.period_start != ""
+            assert mr.period_end != ""
+
+        # Sharpe should depend on return and volatility
+        sharpe_result = fm.get_result(MetricId.SHARPE_RATIO)
+        assert sharpe_result is not None
+        assert MetricId.ANNUALIZED_RETURN in sharpe_result.dependencies
+        assert MetricId.ANNUALIZED_VOLATILITY in sharpe_result.dependencies

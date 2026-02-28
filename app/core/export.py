@@ -15,6 +15,7 @@ def export_memo_markdown(decision_run: DecisionRun) -> str:
         f"**Run ID:** `{decision_run.run_id}`",
         f"**Timestamp:** {decision_run.timestamp}",
         f"**Input Hash:** `{decision_run.input_hash[:16]}...`",
+        f"**Metric Version:** {decision_run.metric_version}",
         f"**Benchmark:** {decision_run.benchmark.symbol if decision_run.benchmark else 'None'}",
         "",
         "---",
@@ -22,6 +23,8 @@ def export_memo_markdown(decision_run: DecisionRun) -> str:
         "## Universe Summary",
         "",
         f"- **Funds evaluated:** {len(decision_run.universe.funds)}",
+        f"- **Candidates included:** {sum(1 for rc in decision_run.run_candidates if rc.included)}",
+        f"- **Candidates excluded:** {sum(1 for rc in decision_run.run_candidates if not rc.included)}",
         f"- **Validation warnings:** {len(decision_run.universe.warnings)}",
         "",
         "## Mandate Configuration",
@@ -29,6 +32,7 @@ def export_memo_markdown(decision_run: DecisionRun) -> str:
     ]
 
     mandate = decision_run.mandate
+    lines.append(f"- Name: {mandate.name}")
     if mandate.min_liquidity_days is not None:
         lines.append(f"- Min liquidity: {mandate.min_liquidity_days} days")
     if mandate.max_drawdown_tolerance is not None:
@@ -39,11 +43,17 @@ def export_memo_markdown(decision_run: DecisionRun) -> str:
         lines.append(f"- Strategy include: {', '.join(mandate.strategy_include)}")
     if mandate.strategy_exclude:
         lines.append(f"- Strategy exclude: {', '.join(mandate.strategy_exclude)}")
-    lines.append(
-        f"- Weights: return={mandate.weight_return}, "
-        f"sharpe={mandate.weight_sharpe}, "
-        f"drawdown_penalty={mandate.weight_drawdown_penalty}"
+    weights_str = ", ".join(
+        f"{mid.value}={w}" for mid, w in mandate.weights.items()
     )
+    lines.append(f"- Weights: {weights_str}")
+
+    # Excluded candidates
+    excluded = [rc for rc in decision_run.run_candidates if not rc.included]
+    if excluded:
+        lines.extend(["", "## Excluded Candidates", ""])
+        for rc in excluded:
+            lines.append(f"- {rc.fund_name}: {rc.exclusion_reason}")
 
     lines.extend(["", "## Ranked Shortlist", ""])
     lines.append(
@@ -52,7 +62,7 @@ def export_memo_markdown(decision_run: DecisionRun) -> str:
     lines.append("|------|------|--------|-----|--------|--------|-------|-------------|")
 
     for sf in decision_run.ranked_shortlist:
-        m = sf.metrics
+        m = sf.metric_values
         ret = m.get(MetricId.ANNUALIZED_RETURN, 0)
         vol = m.get(MetricId.ANNUALIZED_VOLATILITY, 0)
         sharpe = m.get(MetricId.SHARPE_RATIO, 0)

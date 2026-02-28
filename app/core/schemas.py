@@ -5,6 +5,12 @@ from enum import Enum
 from pydantic import BaseModel, Field
 
 
+# ---------------------------------------------------------------------------
+# Metric version — bump when metric formulas change
+# ---------------------------------------------------------------------------
+METRIC_VERSION = "1.0.0"
+
+
 class ColumnMapping(BaseModel):
     """User-confirmed mapping from CSV columns to canonical fields."""
 
@@ -59,15 +65,49 @@ class MetricId(str, Enum):
     BENCHMARK_CORRELATION = "benchmark_correlation"
 
 
+# ---------------------------------------------------------------------------
+# Per-metric result with lineage (aligned with tech spec MetricResult)
+# ---------------------------------------------------------------------------
+
+
+class MetricResult(BaseModel):
+    """Single metric computation result with formula and lineage."""
+
+    metric_id: MetricId
+    value: float
+    period_start: str
+    period_end: str
+    formula_text: str
+    dependencies: list[MetricId] = Field(default_factory=list)
+
+
 class FundMetrics(BaseModel):
     """Computed metrics for a single fund."""
 
     fund_name: str
-    metrics: dict[MetricId, float]
+    metric_results: list[MetricResult]
     date_range_start: str
     date_range_end: str
     month_count: int
     insufficient_history: bool = False
+
+    def get_value(self, metric_id: MetricId) -> float | None:
+        """Look up a single metric value by id."""
+        for r in self.metric_results:
+            if r.metric_id == metric_id:
+                return r.value
+        return None
+
+    def get_result(self, metric_id: MetricId) -> MetricResult | None:
+        """Look up the full MetricResult by id."""
+        for r in self.metric_results:
+            if r.metric_id == metric_id:
+                return r
+        return None
+
+    def values_dict(self) -> dict[MetricId, float]:
+        """Flat dict view for convenience (display, export)."""
+        return {r.metric_id: r.value for r in self.metric_results}
 
 
 class BenchmarkSeries(BaseModel):
@@ -91,26 +131,59 @@ class ConstraintResult(BaseModel):
 class MandateConfig(BaseModel):
     """User-configured mandate for a decision run."""
 
+    name: str = "Untitled Mandate"
     min_liquidity_days: int | None = None
     max_drawdown_tolerance: float | None = None  # e.g., -0.20 for 20% max DD
     target_volatility: float | None = None
     strategy_include: list[str] = Field(default_factory=list)
     strategy_exclude: list[str] = Field(default_factory=list)
-    weight_return: float = 0.4
-    weight_sharpe: float = 0.4
-    weight_drawdown_penalty: float = 0.2
+    weights: dict[MetricId, float] = Field(
+        default_factory=lambda: {
+            MetricId.ANNUALIZED_RETURN: 0.4,
+            MetricId.SHARPE_RATIO: 0.4,
+            MetricId.MAX_DRAWDOWN: 0.2,
+        }
+    )
+
+
+# ---------------------------------------------------------------------------
+# Score breakdown (aligned with tech spec score_result.score_breakdown_json)
+# ---------------------------------------------------------------------------
+
+
+class ScoreComponent(BaseModel):
+    """Breakdown of one metric's contribution to the composite score."""
+
+    metric_id: MetricId
+    raw_value: float
+    normalized_value: float
+    weight: float
+    weighted_contribution: float  # = normalized_value * weight
 
 
 class ScoredFund(BaseModel):
     """A fund with its composite score and constraint results."""
 
     fund_name: str
-    metrics: dict[MetricId, float]
-    normalized_scores: dict[MetricId, float]
+    metric_values: dict[MetricId, float]  # all raw metrics for display
+    score_breakdown: list[ScoreComponent]
     composite_score: float
     rank: int
     constraint_results: list[ConstraintResult]
     all_constraints_passed: bool
+
+
+# ---------------------------------------------------------------------------
+# Run candidate tracking (aligned with tech spec run_candidate)
+# ---------------------------------------------------------------------------
+
+
+class RunCandidate(BaseModel):
+    """Tracks whether a fund was included or excluded from ranking."""
+
+    fund_name: str
+    included: bool
+    exclusion_reason: str | None = None
 
 
 class Claim(BaseModel):
@@ -152,10 +225,12 @@ class DecisionRun(BaseModel):
     run_id: str
     input_hash: str
     timestamp: str
+    metric_version: str
     universe: NormalizedUniverse
     benchmark: BenchmarkSeries | None = None
     mandate: MandateConfig
     all_fund_metrics: list[FundMetrics]
+    run_candidates: list[RunCandidate]
     ranked_shortlist: list[ScoredFund]
     memo: MemoOutput | None = None
     fact_pack: FactPack | None = None

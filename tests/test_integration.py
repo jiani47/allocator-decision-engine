@@ -40,9 +40,10 @@ class TestFullPipelineClean:
 
         # Step 4: Rank with default mandate
         mandate = MandateConfig()
-        ranked = step_rank(universe, fund_metrics, mandate)
+        ranked, run_candidates = step_rank(universe, fund_metrics, mandate)
         assert len(ranked) == 3
         assert ranked[0].rank == 1
+        assert len(run_candidates) == 3
 
         # Step 5: Create run (no memo)
         run = step_create_run(
@@ -50,10 +51,13 @@ class TestFullPipelineClean:
             benchmark=None,
             mandate=mandate,
             all_fund_metrics=fund_metrics,
+            run_candidates=run_candidates,
             ranked_shortlist=ranked,
         )
         assert run.run_id is not None
+        assert run.metric_version is not None
         assert len(run.ranked_shortlist) == 3
+        assert len(run.run_candidates) == 3
 
         # Step 6: Export
         md = step_export_markdown(run)
@@ -78,7 +82,7 @@ class TestFullPipelineMessy:
 
         fund_metrics = step_compute_metrics(universe)
         mandate = MandateConfig()
-        ranked = step_rank(universe, fund_metrics, mandate)
+        ranked, run_candidates = step_rank(universe, fund_metrics, mandate)
 
         # All funds should be ranked despite messiness
         assert len(ranked) > 0
@@ -91,7 +95,7 @@ class TestFullPipelineMessy:
 
         # Exclude Global Macro
         mandate = MandateConfig(strategy_exclude=["Global Macro"])
-        ranked = step_rank(universe, fund_metrics, mandate)
+        ranked, _ = step_rank(universe, fund_metrics, mandate)
 
         birch = next(sf for sf in ranked if sf.fund_name == "Birch Global Macro")
         assert not birch.all_constraints_passed

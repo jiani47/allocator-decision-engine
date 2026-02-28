@@ -3,10 +3,10 @@
 from pathlib import Path
 
 from app.core.decision_run import create_decision_run
-from app.core.evidence.audit import FORMULA_DESCRIPTIONS, build_claim_evidence
+from app.core.evidence.audit import build_claim_evidence
 from app.core.export import export_decision_run_json, export_memo_markdown
 from app.core.hashing import file_hash
-from app.core.metrics.compute import compute_all_metrics
+from app.core.metrics.compute import METRIC_FORMULAS, compute_all_metrics
 from app.core.schemas import (
     Claim,
     MandateConfig,
@@ -31,7 +31,7 @@ def _build_full_run():
     universe = build_normalized_universe(df, mapping, file_hash(content))
     all_metrics = compute_all_metrics(universe.funds)
     mandate = MandateConfig()
-    ranked = rank_universe(universe, all_metrics, mandate)
+    ranked, run_candidates = rank_universe(universe, all_metrics, mandate)
 
     memo = MemoOutput(
         memo_text="# Test Memo\n\nAtlas shows strong returns.",
@@ -56,6 +56,7 @@ def _build_full_run():
         benchmark=None,
         mandate=mandate,
         all_fund_metrics=all_metrics,
+        run_candidates=run_candidates,
         ranked_shortlist=ranked,
         memo=memo,
     )
@@ -75,6 +76,8 @@ class TestDecisionRun:
         assert run.universe is not None
         assert run.mandate is not None
         assert len(run.all_fund_metrics) == 3
+        assert run.metric_version is not None
+        assert len(run.run_candidates) == 3
 
 
 class TestClaimEvidence:
@@ -87,7 +90,7 @@ class TestClaimEvidence:
         assert ev.metric_id == MetricId.ANNUALIZED_RETURN
         assert ev.fund_name == "Atlas L/S Equity"
         assert ev.computed_value != 0
-        assert ev.formula_description == FORMULA_DESCRIPTIONS[MetricId.ANNUALIZED_RETURN]
+        assert ev.formula_description == METRIC_FORMULAS[MetricId.ANNUALIZED_RETURN]
         assert len(ev.sample_raw_returns) > 0
 
     def test_evidence_for_multiple_metrics(self):
@@ -99,6 +102,21 @@ class TestClaimEvidence:
         assert MetricId.MAX_DRAWDOWN in metric_ids
         assert MetricId.ANNUALIZED_VOLATILITY in metric_ids
 
+    def test_evidence_has_dependencies(self):
+        """Sharpe evidence should list its dependencies."""
+        run = _build_full_run()
+        claim = Claim(
+            claim_id="c_test",
+            claim_text="Atlas has good Sharpe",
+            referenced_metric_ids=[MetricId.SHARPE_RATIO],
+            referenced_fund_names=["Atlas L/S Equity"],
+        )
+        evidence = build_claim_evidence(claim, run)
+        assert len(evidence) == 1
+        ev = evidence[0]
+        assert MetricId.ANNUALIZED_RETURN in ev.dependencies
+        assert MetricId.ANNUALIZED_VOLATILITY in ev.dependencies
+
 
 class TestExport:
     def test_markdown_export(self):
@@ -108,6 +126,7 @@ class TestExport:
         assert "Atlas L/S Equity" in md
         assert "Ranked Shortlist" in md
         assert "Mandate Configuration" in md
+        assert "Metric Version" in md
         assert run.run_id[:8] in md
 
     def test_json_export_roundtrip(self):
@@ -117,4 +136,6 @@ class TestExport:
         import json
         data = json.loads(json_str)
         assert data["run_id"] == run.run_id
+        assert data["metric_version"] is not None
         assert len(data["ranked_shortlist"]) == 3
+        assert len(data["run_candidates"]) == 3

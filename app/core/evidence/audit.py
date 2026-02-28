@@ -10,14 +10,6 @@ from app.core.schemas import (
     MetricId,
 )
 
-FORMULA_DESCRIPTIONS: dict[MetricId, str] = {
-    MetricId.ANNUALIZED_RETURN: "Annualized Return = (product(1 + r_i))^(12/n) - 1",
-    MetricId.ANNUALIZED_VOLATILITY: "Annualized Volatility = std(r_i) * sqrt(12)",
-    MetricId.SHARPE_RATIO: "Sharpe Ratio = Annualized Return / Annualized Volatility (rf=0)",
-    MetricId.MAX_DRAWDOWN: "Max Drawdown = min(cumulative_wealth / running_max - 1)",
-    MetricId.BENCHMARK_CORRELATION: "Benchmark Correlation = pearson_corr(fund_returns, benchmark_returns)",
-}
-
 
 class MetricEvidence(BaseModel):
     """Evidence backing a single metric reference in a claim."""
@@ -26,6 +18,7 @@ class MetricEvidence(BaseModel):
     fund_name: str
     computed_value: float
     formula_description: str
+    dependencies: list[MetricId]
     date_range_start: str
     date_range_end: str
     month_count: int
@@ -49,8 +42,8 @@ def build_claim_evidence(
             continue
 
         for metric_id in claim.referenced_metric_ids:
-            value = fm.metrics.get(metric_id)
-            if value is None:
+            result = fm.get_result(metric_id)
+            if result is None:
                 continue
 
             # Sample raw returns: first 3 and last 3 periods
@@ -62,12 +55,11 @@ def build_claim_evidence(
                 MetricEvidence(
                     metric_id=metric_id,
                     fund_name=fund_name,
-                    computed_value=value,
-                    formula_description=FORMULA_DESCRIPTIONS.get(
-                        metric_id, "Unknown formula"
-                    ),
-                    date_range_start=fm.date_range_start,
-                    date_range_end=fm.date_range_end,
+                    computed_value=result.value,
+                    formula_description=result.formula_text,
+                    dependencies=result.dependencies,
+                    date_range_start=result.period_start,
+                    date_range_end=result.period_end,
                     month_count=fm.month_count,
                     sample_raw_returns=sample_returns,
                 )

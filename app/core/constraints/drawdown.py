@@ -11,7 +11,7 @@ class MaxDrawdownConstraint(BaseConstraint):
         self._tolerance = max_drawdown_tolerance  # e.g., -0.20
 
     def evaluate(self, fund: NormalizedFund, metrics: FundMetrics) -> ConstraintResult:
-        actual_dd = metrics.metrics.get(MetricId.MAX_DRAWDOWN, 0.0)
+        actual_dd = metrics.get_value(MetricId.MAX_DRAWDOWN) or 0.0
         # Less negative = better. Pass if actual >= tolerance (both negative).
         passed = actual_dd >= self._tolerance
         return ConstraintResult(

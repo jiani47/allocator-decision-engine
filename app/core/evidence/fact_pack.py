@@ -47,7 +47,17 @@ def build_memo_prompt(fact_pack: FactPack) -> str:
             "rank": sf.rank,
             "composite_score": round(sf.composite_score, 4),
             "all_constraints_passed": sf.all_constraints_passed,
-            "metrics": {k.value: round(v, 6) for k, v in sf.metrics.items()},
+            "metrics": {k.value: round(v, 6) for k, v in sf.metric_values.items()},
+            "score_breakdown": [
+                {
+                    "metric": sc.metric_id.value,
+                    "raw": round(sc.raw_value, 6),
+                    "normalized": round(sc.normalized_value, 4),
+                    "weight": sc.weight,
+                    "contribution": round(sc.weighted_contribution, 4),
+                }
+                for sc in sf.score_breakdown
+            ],
             "constraint_results": [
                 {"name": cr.constraint_name, "passed": cr.passed, "explanation": cr.explanation}
                 for cr in sf.constraint_results

@@ -45,14 +45,15 @@ def _reset_from(step: int) -> None:
     """Clear downstream state when going back."""
     keys_by_step = {
         0: ["raw_df", "mapping", "file_hash", "universe", "benchmark", "fund_metrics",
-            "mandate", "ranked", "memo", "fact_pack", "decision_run"],
-        1: ["universe", "benchmark", "fund_metrics", "mandate", "ranked", "memo",
+            "mandate", "ranked", "run_candidates", "memo", "fact_pack", "decision_run"],
+        1: ["universe", "benchmark", "fund_metrics", "mandate", "ranked",
+            "run_candidates", "memo", "fact_pack", "decision_run"],
+        2: ["benchmark", "fund_metrics", "mandate", "ranked", "run_candidates",
+            "memo", "fact_pack", "decision_run"],
+        3: ["fund_metrics", "mandate", "ranked", "run_candidates", "memo",
             "fact_pack", "decision_run"],
-        2: ["benchmark", "fund_metrics", "mandate", "ranked", "memo", "fact_pack",
-            "decision_run"],
-        3: ["fund_metrics", "mandate", "ranked", "memo", "fact_pack", "decision_run"],
-        4: ["mandate", "ranked", "memo", "fact_pack", "decision_run"],
-        5: ["ranked", "memo", "fact_pack", "decision_run"],
+        4: ["mandate", "ranked", "run_candidates", "memo", "fact_pack", "decision_run"],
+        5: ["ranked", "run_candidates", "memo", "fact_pack", "decision_run"],
         6: ["memo", "fact_pack", "decision_run"],
         7: ["decision_run"],
     }
@@ -91,6 +92,18 @@ if st.session_state["step"] == 0:
         "Turn messy manager data into normalized, validated, "
         "and defendable investment decisions."
     )
+
+    with st.expander("Supported file format", expanded=True):
+        st.markdown(
+            "**Single CSV file** with **monthly** return time series per fund.\n\n"
+            "Required columns (names are flexible — we'll infer the mapping):\n"
+            "- **Fund name** — manager or fund identifier\n"
+            "- **Date** — monthly frequency (e.g. 2022-01-01, 01/2022)\n"
+            "- **Monthly return** — decimal (0.012) or percentage (1.2%)\n\n"
+            "Optional columns: strategy, liquidity days, management fee, performance fee.\n\n"
+            "*Not supported: summary-only files, daily/weekly data, "
+            "multi-currency, or multiple asset classes in one file.*"
+        )
 
     uploaded = st.file_uploader("Upload fund universe CSV", type=["csv"])
 
@@ -293,8 +306,10 @@ elif st.session_state["step"] == 4:
     for fm in fund_metrics:
         row = {"Fund": fm.fund_name}
         for mid in MetricId:
-            val = fm.metrics.get(mid, float("nan"))
-            if mid in (MetricId.ANNUALIZED_RETURN, MetricId.ANNUALIZED_VOLATILITY, MetricId.MAX_DRAWDOWN):
+            val = fm.get_value(mid)
+            if val is None:
+                row[mid.value] = "-"
+            elif mid in (MetricId.ANNUALIZED_RETURN, MetricId.ANNUALIZED_VOLATILITY, MetricId.MAX_DRAWDOWN):
                 row[mid.value] = f"{val:.2%}" if not math.isnan(val) else "-"
             elif mid == MetricId.SHARPE_RATIO:
                 row[mid.value] = f"{val:.2f}" if not math.isnan(val) else "-"
@@ -325,6 +340,8 @@ elif st.session_state["step"] == 5:
     st.header("Step 6: Mandate & Weights")
     universe = st.session_state["universe"]
 
+    mandate_name = st.text_input("Mandate name", value="Untitled Mandate")
+
     col1, col2 = st.columns(2)
 
     with col1:
@@ -343,22 +360,29 @@ elif st.session_state["step"] == 5:
 
     with col2:
         st.subheader("Scoring Weights")
-        w_ret = st.slider("Return weight", 0.0, 1.0, 0.4, 0.05)
-        w_sharpe = st.slider("Sharpe weight", 0.0, 1.0, 0.4, 0.05)
-        w_dd = st.slider("Drawdown penalty weight", 0.0, 1.0, 0.2, 0.05)
+        w_ret = st.slider("Annualized Return weight", 0.0, 1.0, 0.4, 0.05)
+        w_sharpe = st.slider("Sharpe Ratio weight", 0.0, 1.0, 0.4, 0.05)
+        w_dd = st.slider("Max Drawdown penalty weight", 0.0, 1.0, 0.2, 0.05)
 
         total = w_ret + w_sharpe + w_dd
         if abs(total - 1.0) > 0.01:
             st.warning(f"Weights sum to {total:.2f}, not 1.0. Results may be unexpected.")
 
+    weights = {}
+    if w_ret > 0:
+        weights[MetricId.ANNUALIZED_RETURN] = w_ret
+    if w_sharpe > 0:
+        weights[MetricId.SHARPE_RATIO] = w_sharpe
+    if w_dd > 0:
+        weights[MetricId.MAX_DRAWDOWN] = w_dd
+
     mandate = MandateConfig(
+        name=mandate_name,
         min_liquidity_days=min_liq,
         max_drawdown_tolerance=-max_dd_pct / 100.0 if max_dd_pct else None,
         target_volatility=target_vol_pct / 100.0 if target_vol_pct else None,
         strategy_exclude=strategy_exclude,
-        weight_return=w_ret,
-        weight_sharpe=w_sharpe,
-        weight_drawdown_penalty=w_dd,
+        weights=weights,
     )
 
     bc1, bc2 = st.columns(2)
@@ -372,11 +396,12 @@ elif st.session_state["step"] == 5:
             from app.services import step_rank
 
             with st.spinner("Ranking funds..."):
-                ranked = step_rank(
+                ranked, run_candidates = step_rank(
                     universe, st.session_state["fund_metrics"], mandate
                 )
             st.session_state["mandate"] = mandate
             st.session_state["ranked"] = ranked
+            st.session_state["run_candidates"] = run_candidates
             _go_to(6)
             st.rerun()
 
@@ -386,10 +411,18 @@ elif st.session_state["step"] == 5:
 elif st.session_state["step"] == 6:
     st.header("Step 7: Ranked Shortlist")
     ranked = st.session_state["ranked"]
+    run_candidates = st.session_state.get("run_candidates", [])
+
+    # Show excluded candidates
+    excluded = [rc for rc in run_candidates if not rc.included]
+    if excluded:
+        with st.expander(f"{len(excluded)} fund(s) excluded from ranking"):
+            for rc in excluded:
+                st.write(f"- **{rc.fund_name}**: {rc.exclusion_reason}")
 
     rows = []
     for sf in ranked:
-        m = sf.metrics
+        m = sf.metric_values
         rows.append({
             "Rank": sf.rank,
             "Fund": sf.fund_name,
@@ -403,10 +436,21 @@ elif st.session_state["step"] == 6:
 
     st.dataframe(pd.DataFrame(rows), use_container_width=True)
 
-    # Show constraint details
+    # Show constraint details and score breakdown
     for sf in ranked:
-        if sf.constraint_results:
-            with st.expander(f"{sf.fund_name} — Constraint Details"):
+        with st.expander(f"{sf.fund_name} — Details"):
+            if sf.score_breakdown:
+                st.markdown("**Score Breakdown:**")
+                for sc in sf.score_breakdown:
+                    st.write(
+                        f"- {sc.metric_id.value}: "
+                        f"raw={sc.raw_value:.4f}, "
+                        f"normalized={sc.normalized_value:.3f}, "
+                        f"weight={sc.weight}, "
+                        f"contribution={sc.weighted_contribution:.4f}"
+                    )
+            if sf.constraint_results:
+                st.markdown("**Constraints:**")
                 for cr in sf.constraint_results:
                     icon = "+" if cr.passed else "x"
                     st.write(f"[{icon}] {cr.explanation}")
@@ -504,6 +548,7 @@ elif st.session_state["step"] == 8:
         benchmark=st.session_state.get("benchmark"),
         mandate=st.session_state["mandate"],
         all_fund_metrics=st.session_state["fund_metrics"],
+        run_candidates=st.session_state.get("run_candidates", []),
         ranked_shortlist=st.session_state["ranked"],
         memo=memo,
         fact_pack=st.session_state.get("fact_pack"),
@@ -519,6 +564,7 @@ elif st.session_state["step"] == 8:
                 st.markdown(f"**{ev.metric_id.value}** for **{ev.fund_name}**")
                 st.write(f"- Value: `{ev.computed_value:.6f}`")
                 st.write(f"- Formula: {ev.formula_description}")
+                st.write(f"- Dependencies: {', '.join(d.value for d in ev.dependencies) or 'none'}")
                 st.write(f"- Date range: {ev.date_range_start} to {ev.date_range_end} ({ev.month_count} months)")
                 st.write("- Sample returns:")
                 st.json(ev.sample_raw_returns)
@@ -548,6 +594,7 @@ elif st.session_state["step"] == 9:
             benchmark=st.session_state.get("benchmark"),
             mandate=st.session_state["mandate"],
             all_fund_metrics=st.session_state["fund_metrics"],
+            run_candidates=st.session_state.get("run_candidates", []),
             ranked_shortlist=st.session_state["ranked"],
             memo=st.session_state.get("memo"),
             fact_pack=st.session_state.get("fact_pack"),
@@ -558,6 +605,7 @@ elif st.session_state["step"] == 9:
 
     st.markdown(f"**Run ID:** `{decision_run.run_id}`")
     st.markdown(f"**Timestamp:** {decision_run.timestamp}")
+    st.markdown(f"**Metric Version:** {decision_run.metric_version}")
     st.markdown(f"**Input Hash:** `{decision_run.input_hash[:16]}...`")
 
     col1, col2 = st.columns(2)

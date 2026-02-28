@@ -17,6 +17,7 @@ from app.core.schemas import (
     NormalizedFund,
     NormalizedUniverse,
     ColumnMapping,
+    ScoreComponent,
     ScoredFund,
 )
 from app.llm.memo_service import generate_memo, validate_claims
@@ -26,19 +27,37 @@ def _make_shortlist() -> list[ScoredFund]:
     return [
         ScoredFund(
             fund_name="Atlas L/S Equity",
-            metrics={
+            metric_values={
                 MetricId.ANNUALIZED_RETURN: 0.08,
                 MetricId.ANNUALIZED_VOLATILITY: 0.12,
                 MetricId.SHARPE_RATIO: 0.67,
                 MetricId.MAX_DRAWDOWN: -0.10,
                 MetricId.BENCHMARK_CORRELATION: 0.75,
             },
-            normalized_scores={
-                MetricId.ANNUALIZED_RETURN: 0.8,
-                MetricId.SHARPE_RATIO: 0.7,
-                MetricId.MAX_DRAWDOWN: 0.9,
-            },
-            composite_score=0.82,
+            score_breakdown=[
+                ScoreComponent(
+                    metric_id=MetricId.ANNUALIZED_RETURN,
+                    raw_value=0.08,
+                    normalized_value=0.8,
+                    weight=0.4,
+                    weighted_contribution=0.32,
+                ),
+                ScoreComponent(
+                    metric_id=MetricId.SHARPE_RATIO,
+                    raw_value=0.67,
+                    normalized_value=0.7,
+                    weight=0.4,
+                    weighted_contribution=0.28,
+                ),
+                ScoreComponent(
+                    metric_id=MetricId.MAX_DRAWDOWN,
+                    raw_value=-0.10,
+                    normalized_value=0.9,
+                    weight=0.2,
+                    weighted_contribution=0.18,
+                ),
+            ],
+            composite_score=0.78,
             rank=1,
             constraint_results=[
                 ConstraintResult(
@@ -113,6 +132,12 @@ class TestMemoPrompt:
         prompt = build_memo_prompt(fp)
         assert "Do NOT invent any numbers" in prompt
         assert "valid JSON" in prompt
+
+    def test_prompt_contains_score_breakdown(self):
+        fp = _make_fact_pack()
+        prompt = build_memo_prompt(fp)
+        assert "score_breakdown" in prompt
+        assert "contribution" in prompt
 
 
 class TestMemoGeneration:
