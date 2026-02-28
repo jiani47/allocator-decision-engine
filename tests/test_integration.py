@@ -4,13 +4,15 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from app.core.schemas import MandateConfig, MetricId
+from app.core.schemas import LLMExtractedFund, LLMIngestionResult, MandateConfig, MetricId
 from app.services import (
     step_compute_metrics,
     step_create_run,
     step_export_json,
     step_export_markdown,
     step_normalize,
+    step_normalize_from_llm,
+    step_parse_raw,
     step_rank,
     step_upload,
 )
@@ -101,3 +103,99 @@ class TestFullPipelineMessy:
         assert not birch.all_constraints_passed
         # Birch should be ranked last
         assert birch.rank == len(ranked)
+
+
+class TestLLMPathIntegration:
+    """Integration test using LLM extraction path (mocked LLM, real everything else)."""
+
+    def test_llm_path_upload_to_export(self):
+        content = (FIXTURES / "01_clean_universe.csv").read_bytes()
+
+        # Step 0: Parse raw file
+        raw_context = step_parse_raw(content, "01_clean_universe.csv")
+        assert len(raw_context.data_rows) == 72
+        assert len(raw_context.headers) == 5
+
+        # Step 1: Simulate LLM extraction (mock the LLM call, use real data)
+        llm_result = LLMIngestionResult(
+            funds=[
+                LLMExtractedFund(
+                    fund_name="Atlas L/S Equity",
+                    strategy="Long/Short Equity",
+                    liquidity_days=45,
+                    monthly_returns={
+                        f"2022-{m:02d}": 0.01 * (m % 5 - 2)
+                        for m in range(1, 13)
+                    } | {
+                        f"2023-{m:02d}": 0.01 * (m % 5 - 2)
+                        for m in range(1, 13)
+                    },
+                    source_row_indices=list(range(1, 25)),
+                ),
+                LLMExtractedFund(
+                    fund_name="Birch Global Macro",
+                    strategy="Global Macro",
+                    liquidity_days=90,
+                    monthly_returns={
+                        f"2022-{m:02d}": 0.008 * (m % 4 - 1)
+                        for m in range(1, 13)
+                    } | {
+                        f"2023-{m:02d}": 0.008 * (m % 4 - 1)
+                        for m in range(1, 13)
+                    },
+                    source_row_indices=list(range(25, 49)),
+                ),
+                LLMExtractedFund(
+                    fund_name="Cedar Credit",
+                    strategy="Credit",
+                    liquidity_days=30,
+                    monthly_returns={
+                        f"2022-{m:02d}": 0.005 * (m % 3 - 1)
+                        for m in range(1, 13)
+                    } | {
+                        f"2023-{m:02d}": 0.005 * (m % 3 - 1)
+                        for m in range(1, 13)
+                    },
+                    source_row_indices=list(range(49, 73)),
+                ),
+            ],
+            interpretation_notes="Extracted 3 funds from clean CSV",
+            ambiguities=[],
+        )
+
+        # Step 2: Normalize from LLM result
+        universe = step_normalize_from_llm(llm_result, raw_context)
+        assert len(universe.funds) == 3
+        assert universe.ingestion_method == "llm"
+        assert universe.column_mapping is None
+
+        # Step 3: Compute metrics (no benchmark)
+        fund_metrics = step_compute_metrics(universe)
+        assert len(fund_metrics) == 3
+        for fm in fund_metrics:
+            assert not fm.insufficient_history
+
+        # Step 4: Rank
+        mandate = MandateConfig()
+        ranked, run_candidates = step_rank(universe, fund_metrics, mandate)
+        assert len(ranked) == 3
+        assert ranked[0].rank == 1
+
+        # Step 5: Create run (no memo)
+        run = step_create_run(
+            universe=universe,
+            benchmark=None,
+            mandate=mandate,
+            all_fund_metrics=fund_metrics,
+            run_candidates=run_candidates,
+            ranked_shortlist=ranked,
+        )
+        assert run.run_id is not None
+
+        # Step 6: Export
+        md = step_export_markdown(run)
+        assert "Ranked Shortlist" in md
+
+        json_str = step_export_json(run)
+        data = json.loads(json_str)
+        assert data["run_id"] == run.run_id

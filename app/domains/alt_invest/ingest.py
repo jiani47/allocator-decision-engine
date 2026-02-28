@@ -12,8 +12,10 @@ import pandas as pd
 from app.core.exceptions import InvalidUniverseError, SchemaInferenceError
 from app.core.schemas import (
     ColumnMapping,
+    LLMIngestionResult,
     NormalizedFund,
     NormalizedUniverse,
+    RawFileContext,
     ValidationWarning,
 )
 
@@ -276,4 +278,105 @@ def build_normalized_universe(
         source_file_hash=file_hash,
         column_mapping=mapping,
         normalization_timestamp=datetime.now(timezone.utc).isoformat(),
+    )
+
+
+def build_normalized_universe_from_llm(
+    llm_result: LLMIngestionResult,
+    raw_context: RawFileContext,
+) -> NormalizedUniverse:
+    """Build NormalizedUniverse from LLM-extracted fund data.
+
+    Converts LLMExtractedFund objects into a DataFrame, then runs the
+    existing deterministic validation (duplicates, missing months, outliers).
+    """
+    logger.info(
+        "Building normalized universe from LLM extraction: %d funds",
+        len(llm_result.funds),
+    )
+
+    # Convert LLM-extracted funds to a DataFrame for validation
+    rows = []
+    for fund in llm_result.funds:
+        for date_key, ret_val in fund.monthly_returns.items():
+            row: dict = {
+                "fund_name": fund.fund_name,
+                "date": date_key,
+                "monthly_return": ret_val,
+            }
+            if fund.strategy is not None:
+                row["strategy"] = fund.strategy
+            if fund.liquidity_days is not None:
+                row["liquidity_days"] = fund.liquidity_days
+            if fund.management_fee is not None:
+                row["management_fee"] = fund.management_fee
+            if fund.performance_fee is not None:
+                row["performance_fee"] = fund.performance_fee
+            rows.append(row)
+
+    if not rows:
+        raise InvalidUniverseError("LLM extraction produced no data rows")
+
+    work = pd.DataFrame(rows)
+
+    # Run existing validation pipeline
+    warnings = detect_duplicates(work)
+    work = work.drop_duplicates(subset=["fund_name", "date"], keep="first").reset_index(
+        drop=True
+    )
+    warnings.extend(detect_missing_months(work))
+    warnings.extend(detect_outliers(work))
+
+    if work["date"].nunique() <= 1:
+        raise InvalidUniverseError(
+            "LLM extraction produced data with only 1 unique date"
+        )
+
+    # Build NormalizedFund objects
+    funds: list[NormalizedFund] = []
+    for fund_name, group in work.groupby("fund_name"):
+        sorted_group = group.sort_values("date")
+        monthly_returns = dict(
+            zip(sorted_group["date"], sorted_group["monthly_return"])
+        )
+        periods = sorted(monthly_returns.keys())
+
+        fund = NormalizedFund(
+            fund_name=str(fund_name),
+            strategy=sorted_group["strategy"].iloc[0]
+            if "strategy" in sorted_group.columns
+            and pd.notna(sorted_group["strategy"].iloc[0])
+            else None,
+            liquidity_days=int(sorted_group["liquidity_days"].iloc[0])
+            if "liquidity_days" in sorted_group.columns
+            and pd.notna(sorted_group["liquidity_days"].iloc[0])
+            else None,
+            management_fee=float(sorted_group["management_fee"].iloc[0])
+            if "management_fee" in sorted_group.columns
+            and pd.notna(sorted_group["management_fee"].iloc[0])
+            else None,
+            performance_fee=float(sorted_group["performance_fee"].iloc[0])
+            if "performance_fee" in sorted_group.columns
+            and pd.notna(sorted_group["performance_fee"].iloc[0])
+            else None,
+            monthly_returns=monthly_returns,
+            date_range_start=periods[0],
+            date_range_end=periods[-1],
+            month_count=len(periods),
+        )
+        funds.append(fund)
+
+    if not funds:
+        raise InvalidUniverseError("No funds found after LLM normalization")
+
+    logger.info("Normalized %d funds from LLM with %d warnings", len(funds), len(warnings))
+    return NormalizedUniverse(
+        funds=funds,
+        warnings=warnings,
+        source_file_hash=raw_context.file_hash,
+        column_mapping=None,
+        normalization_timestamp=datetime.now(timezone.utc).isoformat(),
+        ingestion_method="llm",
+        raw_context=raw_context,
+        llm_interpretation_notes=llm_result.interpretation_notes,
     )

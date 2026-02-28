@@ -24,9 +24,11 @@ from app.core.schemas import (
     DecisionRun,
     FactPack,
     FundMetrics,
+    LLMIngestionResult,
     MandateConfig,
     MemoOutput,
     NormalizedUniverse,
+    RawFileContext,
     RunCandidate,
     ScoredFund,
 )
@@ -37,9 +39,11 @@ from app.domains.alt_invest.benchmark import (
 )
 from app.domains.alt_invest.ingest import (
     build_normalized_universe,
+    build_normalized_universe_from_llm,
     infer_column_mapping,
     read_csv,
 )
+from app.domains.alt_invest.raw_parser import parse_raw_file
 from app.llm.anthropic_client import AnthropicClient
 from app.llm.memo_service import generate_memo
 
@@ -54,6 +58,40 @@ def step_upload(
     mapping = infer_column_mapping(df)
     fhash = file_hash(file_content)
     return df, mapping, fhash
+
+
+def step_parse_raw(
+    file_content: bytes,
+    filename: str,
+    max_rows: int = 2000,
+) -> RawFileContext:
+    """Parse raw file into classified rows for LLM extraction."""
+    return parse_raw_file(file_content, filename, max_rows=max_rows)
+
+
+def step_llm_extract(
+    raw_context: RawFileContext,
+    settings: Settings,
+    api_key_override: str | None = None,
+) -> tuple[LLMIngestionResult, list[str]]:
+    """Extract fund data from raw context using LLM.
+
+    Returns (LLMIngestionResult, validation_errors).
+    """
+    from app.llm.ingestion_service import extract_funds_via_llm, validate_llm_extraction
+
+    client = AnthropicClient(settings, api_key_override=api_key_override)
+    result = extract_funds_via_llm(client, raw_context)
+    validation_errors = validate_llm_extraction(result)
+    return result, validation_errors
+
+
+def step_normalize_from_llm(
+    llm_result: LLMIngestionResult,
+    raw_context: RawFileContext,
+) -> NormalizedUniverse:
+    """Build normalized universe from LLM-extracted fund data."""
+    return build_normalized_universe_from_llm(llm_result, raw_context)
 
 
 def step_normalize(

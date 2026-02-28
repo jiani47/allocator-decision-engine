@@ -6,6 +6,58 @@ from pydantic import BaseModel, Field
 
 
 # ---------------------------------------------------------------------------
+# Row classification for raw file parsing
+# ---------------------------------------------------------------------------
+
+
+class RowClassification(str, Enum):
+    HEADER = "header"
+    DATA = "data"
+    AGGREGATED = "aggregated"
+    EMPTY = "empty"
+
+
+class RawRow(BaseModel):
+    """A single row from a raw file with classification."""
+
+    row_index: int
+    cells: list[str | None]
+    classification: RowClassification
+
+
+class RawFileContext(BaseModel):
+    """Raw parsed file context preserving maximum information."""
+
+    filename: str
+    file_hash: str
+    headers: list[str]
+    header_row_index: int
+    data_rows: list[RawRow]
+    aggregated_rows: list[RawRow] = Field(default_factory=list)
+    total_rows: int
+
+
+class LLMExtractedFund(BaseModel):
+    """A single fund extracted by the LLM from raw file context."""
+
+    fund_name: str
+    strategy: str | None = None
+    liquidity_days: int | None = None
+    management_fee: float | None = None
+    performance_fee: float | None = None
+    monthly_returns: dict[str, float]  # "YYYY-MM" -> decimal return
+    source_row_indices: list[int] = Field(default_factory=list)
+
+
+class LLMIngestionResult(BaseModel):
+    """Structured result from LLM fund extraction."""
+
+    funds: list[LLMExtractedFund]
+    interpretation_notes: str = ""
+    ambiguities: list[str] = Field(default_factory=list)
+
+
+# ---------------------------------------------------------------------------
 # Metric version — bump when metric formulas change
 # ---------------------------------------------------------------------------
 METRIC_VERSION = "1.0.0"
@@ -53,8 +105,11 @@ class NormalizedUniverse(BaseModel):
     funds: list[NormalizedFund]
     warnings: list[ValidationWarning] = Field(default_factory=list)
     source_file_hash: str
-    column_mapping: ColumnMapping
+    column_mapping: ColumnMapping | None = None
     normalization_timestamp: str
+    ingestion_method: str = "deterministic"  # "deterministic" | "llm"
+    raw_context: RawFileContext | None = None
+    llm_interpretation_notes: str | None = None
 
 
 class MetricId(str, Enum):

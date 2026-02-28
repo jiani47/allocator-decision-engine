@@ -21,8 +21,8 @@ st.set_page_config(
 # Session state initialization
 # ---------------------------------------------------------------------------
 STEPS = [
-    "Upload CSV",
-    "Confirm Mapping",
+    "Upload File",
+    "Review Interpretation",
     "Review Warnings",
     "Benchmark",
     "Metrics",
@@ -45,7 +45,9 @@ def _reset_from(step: int) -> None:
     """Clear downstream state when going back."""
     keys_by_step = {
         0: ["raw_df", "mapping", "file_hash", "universe", "benchmark", "fund_metrics",
-            "mandate", "ranked", "run_candidates", "memo", "fact_pack", "decision_run"],
+            "mandate", "ranked", "run_candidates", "memo", "fact_pack", "decision_run",
+            "raw_context", "llm_result", "llm_validation_errors", "ingestion_method",
+            "api_key"],
         1: ["universe", "benchmark", "fund_metrics", "mandate", "ranked",
             "run_candidates", "memo", "fact_pack", "decision_run"],
         2: ["benchmark", "fund_metrics", "mandate", "ranked", "run_candidates",
@@ -83,52 +85,10 @@ with st.sidebar:
 
 
 # ---------------------------------------------------------------------------
-# Step 0: Upload CSV
+# Helper: render deterministic column mapping step
 # ---------------------------------------------------------------------------
-if st.session_state["step"] == 0:
-    st.title("Equi")
-    st.subheader("Allocator Decision Engine")
-    st.markdown(
-        "Turn messy manager data into normalized, validated, "
-        "and defendable investment decisions."
-    )
-
-    with st.expander("Supported file format", expanded=True):
-        st.markdown(
-            "**Single CSV file** with **monthly** return time series per fund.\n\n"
-            "Required columns (names are flexible — we'll infer the mapping):\n"
-            "- **Fund name** — manager or fund identifier\n"
-            "- **Date** — monthly frequency (e.g. 2022-01-01, 01/2022)\n"
-            "- **Monthly return** — decimal (0.012) or percentage (1.2%)\n\n"
-            "Optional columns: strategy, liquidity days, management fee, performance fee.\n\n"
-            "*Not supported: summary-only files, daily/weekly data, "
-            "multi-currency, or multiple asset classes in one file.*"
-        )
-
-    uploaded = st.file_uploader("Upload fund universe CSV", type=["csv"])
-
-    if uploaded:
-        try:
-            from app.services import step_upload
-
-            content = uploaded.getvalue()
-            df, mapping, fhash = step_upload(content, uploaded.name)
-            st.session_state["uploaded_content"] = content
-            st.session_state["uploaded_name"] = uploaded.name
-            st.session_state["raw_df"] = df
-            st.session_state["mapping"] = mapping
-            st.session_state["file_hash"] = fhash
-            st.success(f"Parsed {len(df)} rows, {len(df.columns)} columns")
-            _go_to(1)
-            st.rerun()
-        except DecisionEngineError as e:
-            st.error(str(e))
-
-# ---------------------------------------------------------------------------
-# Step 1: Confirm Schema Mapping
-# ---------------------------------------------------------------------------
-elif st.session_state["step"] == 1:
-    st.header("Step 2: Confirm Schema Mapping")
+def _render_column_mapping_step() -> None:
+    """Render the deterministic column mapping UI (fallback path)."""
     df = st.session_state["raw_df"]
     mapping = st.session_state["mapping"]
     columns = list(df.columns)
@@ -202,6 +162,236 @@ elif st.session_state["step"] == 1:
                 st.rerun()
             except DecisionEngineError as e:
                 st.error(str(e))
+
+
+# ---------------------------------------------------------------------------
+# Helper: render LLM interpretation review step
+# ---------------------------------------------------------------------------
+def _render_llm_review_step() -> None:
+    """Render the LLM extraction review UI."""
+    llm_result = st.session_state["llm_result"]
+    raw_context = st.session_state["raw_context"]
+    validation_errors = st.session_state.get("llm_validation_errors", [])
+
+    # Interpretation notes
+    if llm_result.interpretation_notes:
+        st.info(f"**Interpretation:** {llm_result.interpretation_notes}")
+
+    # Ambiguities
+    if llm_result.ambiguities:
+        st.warning(
+            "**Ambiguities detected:**\n"
+            + "\n".join(f"- {a}" for a in llm_result.ambiguities)
+        )
+
+    # Validation errors
+    if validation_errors:
+        st.error(
+            "**Validation issues:**\n"
+            + "\n".join(f"- {e}" for e in validation_errors)
+        )
+
+    # Per-fund review
+    st.subheader(f"Extracted {len(llm_result.funds)} fund(s)")
+    for fund in llm_result.funds:
+        returns_sorted = sorted(fund.monthly_returns.items())
+        sample = returns_sorted[:3]
+        sample_str = ", ".join(f"{d}: {v:.4f}" for d, v in sample)
+        date_range = f"{returns_sorted[0][0]} to {returns_sorted[-1][0]}" if returns_sorted else "N/A"
+
+        with st.expander(
+            f"{fund.fund_name} — {len(fund.monthly_returns)} months "
+            f"({date_range})"
+        ):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write(f"**Strategy:** {fund.strategy or 'N/A'}")
+                st.write(f"**Liquidity (days):** {fund.liquidity_days or 'N/A'}")
+                st.write(f"**Management fee:** {fund.management_fee or 'N/A'}")
+                st.write(f"**Performance fee:** {fund.performance_fee or 'N/A'}")
+            with col2:
+                st.write(f"**Months:** {len(fund.monthly_returns)}")
+                st.write(f"**Date range:** {date_range}")
+                st.write(f"**Sample returns:** {sample_str}")
+                st.write(f"**Source rows:** {fund.source_row_indices[:10]}"
+                         + ("..." if len(fund.source_row_indices) > 10 else ""))
+
+    # Correction and re-extract
+    correction = st.text_area(
+        "Corrections or instructions for re-extraction (optional)",
+        placeholder="e.g., 'The returns are already in decimal format, not percentages'",
+        key="llm_correction",
+    )
+
+    bc1, bc2, bc3 = st.columns(3)
+    with bc1:
+        if st.button("Back"):
+            _reset_from(0)
+            _go_to(0)
+            st.rerun()
+    with bc2:
+        if st.button("Re-extract with LLM"):
+            try:
+                from app.services import step_llm_extract
+
+                settings = Settings()
+                api_key = st.session_state.get("api_key", "") or settings.anthropic_api_key
+                with st.spinner("Re-extracting with LLM..."):
+                    result, errors = step_llm_extract(
+                        raw_context,
+                        settings,
+                        api_key_override=api_key if api_key != settings.anthropic_api_key else None,
+                    )
+                st.session_state["llm_result"] = result
+                st.session_state["llm_validation_errors"] = errors
+                st.rerun()
+            except DecisionEngineError as e:
+                st.error(f"LLM extraction failed: {e}")
+    with bc3:
+        if st.button("Confirm & Normalize", type="primary"):
+            try:
+                from app.services import step_normalize_from_llm
+
+                universe = step_normalize_from_llm(llm_result, raw_context)
+                st.session_state["universe"] = universe
+                _go_to(2)
+                st.rerun()
+            except DecisionEngineError as e:
+                st.error(str(e))
+
+
+# ---------------------------------------------------------------------------
+# Step 0: Upload File
+# ---------------------------------------------------------------------------
+if st.session_state["step"] == 0:
+    st.title("Equi")
+    st.subheader("Allocator Decision Engine")
+    st.markdown(
+        "Turn messy manager data into normalized, validated, "
+        "and defendable investment decisions."
+    )
+
+    with st.expander("Supported file format", expanded=True):
+        st.markdown(
+            "**CSV or Excel file** with **monthly** return time series per fund.\n\n"
+            "Required data (column names are flexible):\n"
+            "- **Fund name** — manager or fund identifier\n"
+            "- **Date** — monthly frequency (e.g. 2022-01-01, 01/2022)\n"
+            "- **Monthly return** — decimal (0.012) or percentage (1.2%)\n\n"
+            "Optional: strategy, liquidity days, management fee, performance fee.\n\n"
+            "*Not supported: summary-only files, daily/weekly data, "
+            "multi-currency, or multiple asset classes in one file.*"
+        )
+
+    uploaded = st.file_uploader(
+        "Upload fund universe", type=["csv", "xlsx", "xls"]
+    )
+
+    # Collect API key early (reused for LLM extraction and memo)
+    settings = Settings()
+    env_key = settings.anthropic_api_key
+
+    if not env_key:
+        api_key_input = st.text_input(
+            "Anthropic API key (required for LLM extraction and memo)",
+            type="password",
+            placeholder="sk-ant-...",
+            help="Get your key at https://console.anthropic.com/settings/keys",
+            key="api_key_input_step0",
+        )
+        st.caption(
+            "Your API key is used only for this session and is not persisted."
+        )
+    else:
+        api_key_input = env_key
+
+    if uploaded:
+        content = uploaded.getvalue()
+        filename = uploaded.name
+
+        # Parse raw file (deterministic, instant)
+        try:
+            from app.services import step_parse_raw
+
+            raw_context = step_parse_raw(
+                content, filename, max_rows=settings.ingestion_max_rows
+            )
+            st.session_state["uploaded_content"] = content
+            st.session_state["uploaded_name"] = filename
+            st.session_state["raw_context"] = raw_context
+            if api_key_input:
+                st.session_state["api_key"] = api_key_input
+
+            st.success(
+                f"Parsed {raw_context.total_rows} rows, "
+                f"{len(raw_context.headers)} columns, "
+                f"{len(raw_context.data_rows)} data rows"
+            )
+
+            # Also try deterministic parsing for fallback
+            if filename.lower().endswith(".csv"):
+                try:
+                    from app.services import step_upload
+
+                    df, mapping, fhash = step_upload(content, filename)
+                    st.session_state["raw_df"] = df
+                    st.session_state["mapping"] = mapping
+                    st.session_state["file_hash"] = fhash
+                except DecisionEngineError:
+                    pass  # Deterministic fallback not available
+
+            # Two paths
+            col1, col2 = st.columns(2)
+            with col1:
+                can_llm = bool(api_key_input)
+                if st.button(
+                    "Extract with LLM" + ("" if can_llm else " (API key required)"),
+                    type="primary",
+                    disabled=not can_llm,
+                ):
+                    try:
+                        from app.services import step_llm_extract
+
+                        with st.spinner("Extracting fund data with LLM..."):
+                            result, errors = step_llm_extract(
+                                raw_context,
+                                settings,
+                                api_key_override=api_key_input if api_key_input != env_key else None,
+                            )
+                        st.session_state["llm_result"] = result
+                        st.session_state["llm_validation_errors"] = errors
+                        st.session_state["ingestion_method"] = "llm"
+                        _go_to(1)
+                        st.rerun()
+                    except DecisionEngineError as e:
+                        st.error(f"LLM extraction failed: {e}")
+
+            with col2:
+                has_deterministic = "raw_df" in st.session_state
+                if st.button(
+                    "Use deterministic mapping"
+                    + ("" if has_deterministic else " (CSV only)"),
+                    disabled=not has_deterministic,
+                ):
+                    st.session_state["ingestion_method"] = "deterministic"
+                    _go_to(1)
+                    st.rerun()
+
+        except Exception as e:
+            st.error(f"Failed to parse file: {e}")
+
+# ---------------------------------------------------------------------------
+# Step 1: Review Interpretation
+# ---------------------------------------------------------------------------
+elif st.session_state["step"] == 1:
+    ingestion_method = st.session_state.get("ingestion_method", "deterministic")
+
+    if ingestion_method == "llm":
+        st.header("Step 2: Review LLM Interpretation")
+        _render_llm_review_step()
+    else:
+        st.header("Step 2: Confirm Schema Mapping")
+        _render_column_mapping_step()
 
 # ---------------------------------------------------------------------------
 # Step 2: Review Validation Warnings
@@ -480,8 +670,14 @@ elif st.session_state["step"] == 7:
     settings = Settings()
     env_key = settings.anthropic_api_key
 
+    # Reuse API key from session state if already collected in Step 0
+    stored_key = st.session_state.get("api_key", "")
+
     if env_key:
         api_key = env_key
+    elif stored_key:
+        api_key = stored_key
+        st.info("Using API key provided in Step 1.")
     else:
         api_key = st.text_input(
             "Enter your Anthropic API key",
@@ -525,7 +721,7 @@ elif st.session_state["step"] == 7:
                 st.rerun()
             except DecisionEngineError as e:
                 st.error(f"Memo generation failed: {e}")
-    elif not env_key:
+    elif not env_key and not stored_key:
         st.info("Enter your API key above to generate a memo, or skip to export.")
 
 # ---------------------------------------------------------------------------

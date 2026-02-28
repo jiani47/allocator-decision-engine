@@ -20,3 +20,7 @@ class BenchmarkAlignmentError(DecisionEngineError):
 
 class MemoGenerationError(DecisionEngineError):
     """Raised when LLM memo generation fails."""
+
+
+class LLMIngestionError(DecisionEngineError):
+    """Raised when LLM-based ingestion fails."""

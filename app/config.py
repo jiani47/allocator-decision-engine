@@ -16,3 +16,4 @@ class Settings(BaseSettings):
     min_history_months: int = 12
     outlier_return_threshold: float = 0.25
     default_benchmark_symbol: str = "SPY"
+    ingestion_max_rows: int = 2000
