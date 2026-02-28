@@ -428,26 +428,40 @@ elif st.session_state["step"] == 6:
 elif st.session_state["step"] == 7:
     st.header("Step 8: IC Memo Generation")
 
+    st.markdown(
+        "To generate an IC memo, we use Claude (Anthropic) to draft narrative "
+        "from the deterministic fact pack produced in the previous steps."
+    )
+
     settings = Settings()
+    env_key = settings.anthropic_api_key
 
-    if not settings.anthropic_api_key:
-        st.warning(
-            "No Anthropic API key configured. Set EQUI_ANTHROPIC_API_KEY "
-            "in environment or Streamlit secrets to enable memo generation."
-        )
-        st.info("You can skip this step and go directly to export.")
-
-        bc1, bc2 = st.columns(2)
-        with bc1:
-            if st.button("Back"):
-                _reset_from(6)
-                _go_to(6)
-                st.rerun()
-        with bc2:
-            if st.button("Skip to Export", type="primary"):
-                _go_to(9)
-                st.rerun()
+    if env_key:
+        api_key = env_key
     else:
+        api_key = st.text_input(
+            "Enter your Anthropic API key",
+            type="password",
+            placeholder="sk-ant-...",
+            help="Get your key at https://console.anthropic.com/settings/keys",
+        )
+        st.caption(
+            "Your API key is used only for this request and is not persisted. "
+            "It's held in temporary session memory and discarded when the session ends."
+        )
+
+    bc1, bc2 = st.columns(2)
+    with bc1:
+        if st.button("Back", key="memo_back"):
+            _reset_from(6)
+            _go_to(6)
+            st.rerun()
+    with bc2:
+        if st.button("Skip to Export", key="memo_skip"):
+            _go_to(9)
+            st.rerun()
+
+    if api_key:
         if st.button("Generate Memo", type="primary"):
             try:
                 from app.services import step_generate_memo
@@ -459,6 +473,7 @@ elif st.session_state["step"] == 7:
                         st.session_state["mandate"],
                         st.session_state.get("benchmark_symbol", "SPY"),
                         settings,
+                        api_key_override=api_key if not env_key else None,
                     )
                 st.session_state["memo"] = memo
                 st.session_state["fact_pack"] = fact_pack
@@ -466,17 +481,8 @@ elif st.session_state["step"] == 7:
                 st.rerun()
             except DecisionEngineError as e:
                 st.error(f"Memo generation failed: {e}")
-
-        bc1, bc2 = st.columns(2)
-        with bc1:
-            if st.button("Back"):
-                _reset_from(6)
-                _go_to(6)
-                st.rerun()
-        with bc2:
-            if st.button("Skip to Export"):
-                _go_to(9)
-                st.rerun()
+    elif not env_key:
+        st.info("Enter your API key above to generate a memo, or skip to export.")
 
 # ---------------------------------------------------------------------------
 # Step 8: Audit Claims

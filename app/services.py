@@ -100,13 +100,14 @@ def step_generate_memo(
     mandate: MandateConfig,
     benchmark_symbol: str,
     settings: Settings,
+    api_key_override: str | None = None,
 ) -> tuple[MemoOutput, FactPack]:
     """Generate memo from LLM using fact pack."""
     import uuid
 
     run_id = str(uuid.uuid4())
     fact_pack = build_fact_pack(run_id, shortlist, universe, mandate, benchmark_symbol)
-    client = AnthropicClient(settings)
+    client = AnthropicClient(settings, api_key_override=api_key_override)
     memo = generate_memo(client, fact_pack)
     return memo, fact_pack
 

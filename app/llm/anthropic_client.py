@@ -13,8 +13,9 @@ logger = logging.getLogger("equi.llm")
 
 
 class AnthropicClient:
-    def __init__(self, settings: Settings) -> None:
-        self._client = Anthropic(api_key=settings.anthropic_api_key)
+    def __init__(self, settings: Settings, api_key_override: str | None = None) -> None:
+        api_key = api_key_override or settings.anthropic_api_key
+        self._client = Anthropic(api_key=api_key)
         self._model = settings.anthropic_model
         self._max_tokens = settings.anthropic_max_tokens
         self._temperature = settings.anthropic_temperature
