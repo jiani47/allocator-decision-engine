@@ -1,0 +1,73 @@
+fund_name,date,monthly_return,strategy,liquidity_days
+Atlas L/S Equity,2022-01-01,0.012,Long/Short Equity,45
+Atlas L/S Equity,2022-02-01,-0.008,Long/Short Equity,45
+Atlas L/S Equity,2022-03-01,0.015,Long/Short Equity,45
+Atlas L/S Equity,2022-04-01,0.003,Long/Short Equity,45
+Atlas L/S Equity,2022-05-01,-0.011,Long/Short Equity,45
+Atlas L/S Equity,2022-06-01,-0.022,Long/Short Equity,45
+Atlas L/S Equity,2022-07-01,0.018,Long/Short Equity,45
+Atlas L/S Equity,2022-08-01,0.009,Long/Short Equity,45
+Atlas L/S Equity,2022-09-01,-0.014,Long/Short Equity,45
+Atlas L/S Equity,2022-10-01,0.021,Long/Short Equity,45
+Atlas L/S Equity,2022-11-01,0.007,Long/Short Equity,45
+Atlas L/S Equity,2022-12-01,0.011,Long/Short Equity,45
+Atlas L/S Equity,2023-01-01,0.016,Long/Short Equity,45
+Atlas L/S Equity,2023-02-01,-0.005,Long/Short Equity,45
+Atlas L/S Equity,2023-03-01,0.013,Long/Short Equity,45
+Atlas L/S Equity,2023-04-01,0.008,Long/Short Equity,45
+Atlas L/S Equity,2023-05-01,0.019,Long/Short Equity,45
+Atlas L/S Equity,2023-06-01,-0.003,Long/Short Equity,45
+Atlas L/S Equity,2023-07-01,0.014,Long/Short Equity,45
+Atlas L/S Equity,2023-08-01,-0.009,Long/Short Equity,45
+Atlas L/S Equity,2023-09-01,0.006,Long/Short Equity,45
+Atlas L/S Equity,2023-10-01,0.017,Long/Short Equity,45
+Atlas L/S Equity,2023-11-01,0.010,Long/Short Equity,45
+Atlas L/S Equity,2023-12-01,0.012,Long/Short Equity,45
+Birch Global Macro,2022-01-01,0.025,Global Macro,90
+Birch Global Macro,2022-02-01,0.031,Global Macro,90
+Birch Global Macro,2022-03-01,-0.019,Global Macro,90
+Birch Global Macro,2022-04-01,0.014,Global Macro,90
+Birch Global Macro,2022-05-01,-0.028,Global Macro,90
+Birch Global Macro,2022-06-01,0.033,Global Macro,90
+Birch Global Macro,2022-07-01,-0.012,Global Macro,90
+Birch Global Macro,2022-08-01,0.022,Global Macro,90
+Birch Global Macro,2022-09-01,-0.035,Global Macro,90
+Birch Global Macro,2022-10-01,0.041,Global Macro,90
+Birch Global Macro,2022-11-01,0.018,Global Macro,90
+Birch Global Macro,2022-12-01,-0.009,Global Macro,90
+Birch Global Macro,2023-01-01,0.027,Global Macro,90
+Birch Global Macro,2023-02-01,-0.015,Global Macro,90
+Birch Global Macro,2023-03-01,0.036,Global Macro,90
+Birch Global Macro,2023-04-01,0.011,Global Macro,90
+Birch Global Macro,2023-05-01,-0.023,Global Macro,90
+Birch Global Macro,2023-06-01,0.029,Global Macro,90
+Birch Global Macro,2023-07-01,0.017,Global Macro,90
+Birch Global Macro,2023-08-01,-0.008,Global Macro,90
+Birch Global Macro,2023-09-01,0.024,Global Macro,90
+Birch Global Macro,2023-10-01,-0.013,Global Macro,90
+Birch Global Macro,2023-11-01,0.032,Global Macro,90
+Birch Global Macro,2023-12-01,0.019,Global Macro,90
+Cedar Credit,2022-01-01,0.006,Credit,30
+Cedar Credit,2022-02-01,0.005,Credit,30
+Cedar Credit,2022-03-01,0.007,Credit,30
+Cedar Credit,2022-04-01,0.004,Credit,30
+Cedar Credit,2022-05-01,0.006,Credit,30
+Cedar Credit,2022-06-01,-0.003,Credit,30
+Cedar Credit,2022-07-01,0.008,Credit,30
+Cedar Credit,2022-08-01,0.005,Credit,30
+Cedar Credit,2022-09-01,0.003,Credit,30
+Cedar Credit,2022-10-01,0.007,Credit,30
+Cedar Credit,2022-11-01,0.006,Credit,30
+Cedar Credit,2022-12-01,0.004,Credit,30
+Cedar Credit,2023-01-01,0.007,Credit,30
+Cedar Credit,2023-02-01,0.005,Credit,30
+Cedar Credit,2023-03-01,0.006,Credit,30
+Cedar Credit,2023-04-01,0.008,Credit,30
+Cedar Credit,2023-05-01,0.004,Credit,30
+Cedar Credit,2023-06-01,0.006,Credit,30
+Cedar Credit,2023-07-01,0.005,Credit,30
+Cedar Credit,2023-08-01,0.007,Credit,30
+Cedar Credit,2023-09-01,0.003,Credit,30
+Cedar Credit,2023-10-01,0.006,Credit,30
+Cedar Credit,2023-11-01,0.005,Credit,30
+Cedar Credit,2023-12-01,0.007,Credit,30
