@@ -4,7 +4,13 @@ import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from app.core.schemas import LLMExtractedFund, LLMIngestionResult, MandateConfig, MetricId
+from app.core.schemas import (
+    LLMExtractedFund,
+    LLMIngestionResult,
+    MandateConfig,
+    MetricId,
+    WarningResolution,
+)
 from app.services import (
     step_compute_metrics,
     step_create_run,
@@ -68,6 +74,26 @@ class TestFullPipelineClean:
         json_str = step_export_json(run)
         data = json.loads(json_str)
         assert data["run_id"] == run.run_id
+
+
+    def test_source_row_indices_present(self):
+        content = (FIXTURES / "01_clean_universe.csv").read_bytes()
+        df, mapping, fhash = step_upload(content, "01_clean_universe.csv")
+        universe = step_normalize(df, mapping, fhash)
+
+        for fund in universe.funds:
+            assert len(fund.source_row_indices) == fund.month_count
+            assert all(isinstance(i, int) for i in fund.source_row_indices)
+
+    def test_source_row_indices_with_raw_context(self):
+        content = (FIXTURES / "01_clean_universe.csv").read_bytes()
+        df, mapping, fhash = step_upload(content, "01_clean_universe.csv")
+        raw_context = step_parse_raw(content, "01_clean_universe.csv")
+        universe = step_normalize(df, mapping, fhash, raw_context=raw_context)
+
+        assert universe.raw_context is not None
+        for fund in universe.funds:
+            assert len(fund.source_row_indices) == fund.month_count
 
 
 class TestFullPipelineMessy:
@@ -199,3 +225,58 @@ class TestLLMPathIntegration:
         json_str = step_export_json(run)
         data = json.loads(json_str)
         assert data["run_id"] == run.run_id
+
+
+class TestTopKIntegration:
+    """Test top-K shortlist slicing through the pipeline."""
+
+    def test_top_k_limits_shortlist(self):
+        content = (FIXTURES / "01_clean_universe.csv").read_bytes()
+        df, mapping, fhash = step_upload(content, "01_clean_universe.csv")
+        universe = step_normalize(df, mapping, fhash)
+        fund_metrics = step_compute_metrics(universe)
+
+        # Rank all 3 funds
+        mandate = MandateConfig(shortlist_top_k=1)
+        ranked, run_candidates = step_rank(universe, fund_metrics, mandate)
+        assert len(ranked) == 3  # All 3 are still ranked
+
+        # But when building fact pack for memo, only top 1 should be included
+        from app.core.evidence.fact_pack import build_fact_pack
+
+        effective = ranked[: mandate.shortlist_top_k]
+        fp = build_fact_pack("test", effective, universe, mandate, "SPY")
+        assert len(fp.shortlist) == 1
+        assert fp.shortlist[0].rank == 1
+
+    def test_warning_resolutions_flow_to_fact_pack(self):
+        content = (FIXTURES / "02_messy_universe.csv").read_bytes()
+        df, mapping, fhash = step_upload(content, "02_messy_universe.csv")
+        universe = step_normalize(df, mapping, fhash)
+
+        assert len(universe.warnings) > 0
+
+        # Simulate analyst resolutions
+        resolutions = [
+            WarningResolution(
+                category=universe.warnings[0].category,
+                fund_name=universe.warnings[0].fund_name,
+                original_message=universe.warnings[0].message,
+                action="ignored",
+                analyst_note="Data verified with manager",
+            )
+        ]
+
+        fund_metrics = step_compute_metrics(universe)
+        mandate = MandateConfig()
+        ranked, _ = step_rank(universe, fund_metrics, mandate)
+
+        from app.core.evidence.fact_pack import build_fact_pack, build_memo_prompt
+
+        fp = build_fact_pack("test", ranked, universe, mandate, "SPY", analyst_notes=resolutions)
+        assert len(fp.analyst_notes) == 1
+        assert fp.analyst_notes[0].analyst_note == "Data verified with manager"
+
+        prompt = build_memo_prompt(fp)
+        assert "Data verified with manager" in prompt
+        assert "Analyst Data Quality Notes" in prompt

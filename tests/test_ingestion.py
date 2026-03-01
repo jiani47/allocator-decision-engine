@@ -131,6 +131,58 @@ class TestColumnMappingInference:
             infer_column_mapping(df)
 
 
+class TestSourceRowIndices:
+    """Tests for source_row_indices traceability on NormalizedFund."""
+
+    def test_clean_csv_has_source_row_indices(self):
+        universe = _load_and_normalize("01_clean_universe.csv")
+        for fund in universe.funds:
+            assert len(fund.source_row_indices) == fund.month_count
+            assert all(isinstance(i, int) for i in fund.source_row_indices)
+
+    def test_clean_csv_row_indices_start_at_1(self):
+        """Row 0 is the header, so data rows start at index 1."""
+        universe = _load_and_normalize("01_clean_universe.csv")
+        all_indices = []
+        for fund in universe.funds:
+            all_indices.extend(fund.source_row_indices)
+        assert min(all_indices) == 1
+        # 3 funds * 24 months = 72 data rows => max index = 72
+        assert max(all_indices) == 72
+
+    def test_messy_csv_has_source_row_indices(self):
+        universe = _load_and_normalize("02_messy_universe.csv")
+        for fund in universe.funds:
+            assert len(fund.source_row_indices) > 0
+
+    def test_no_duplicate_indices_across_funds(self):
+        """After dedup, each row should belong to at most one fund."""
+        universe = _load_and_normalize("01_clean_universe.csv")
+        all_indices = []
+        for fund in universe.funds:
+            all_indices.extend(fund.source_row_indices)
+        assert len(all_indices) == len(set(all_indices))
+
+    def test_raw_context_stored_on_universe(self):
+        """When raw_context is passed, it's stored on the universe."""
+        from app.domains.alt_invest.raw_parser import parse_raw_file
+
+        content = (FIXTURES / "01_clean_universe.csv").read_bytes()
+        df = read_csv(content, "01_clean_universe.csv")
+        mapping = infer_column_mapping(df)
+        raw_ctx = parse_raw_file(content, "01_clean_universe.csv")
+        universe = build_normalized_universe(df, mapping, file_hash(content), raw_context=raw_ctx)
+        assert universe.raw_context is not None
+        assert universe.raw_context.filename == "01_clean_universe.csv"
+
+    def test_no_raw_context_still_works(self):
+        """Without raw_context, source_row_indices still populated (offset=1)."""
+        universe = _load_and_normalize("01_clean_universe.csv")
+        assert universe.raw_context is None
+        for fund in universe.funds:
+            assert len(fund.source_row_indices) > 0
+
+
 class TestEdgeCases:
     def test_empty_csv_raises(self):
         with pytest.raises(InvalidUniverseError):

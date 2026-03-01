@@ -34,6 +34,7 @@ class RawFileContext(BaseModel):
     header_row_index: int
     data_rows: list[RawRow]
     aggregated_rows: list[RawRow] = Field(default_factory=list)
+    empty_rows: list[RawRow] = Field(default_factory=list)
     total_rows: int
 
 
@@ -75,6 +76,16 @@ class ColumnMapping(BaseModel):
     performance_fee: str | None = None
 
 
+class WarningResolution(BaseModel):
+    """Analyst resolution for a validation warning."""
+
+    category: str  # "duplicate", "missing_month", "outlier"
+    fund_name: str | None = None
+    original_message: str
+    action: str  # "ignored" | "acknowledged"
+    analyst_note: str = ""
+
+
 class ValidationWarning(BaseModel):
     """A single validation warning from normalization."""
 
@@ -97,6 +108,7 @@ class NormalizedFund(BaseModel):
     date_range_start: str
     date_range_end: str
     month_count: int
+    source_row_indices: list[int] = Field(default_factory=list)
 
 
 class NormalizedUniverse(BaseModel):
@@ -199,6 +211,7 @@ class MandateConfig(BaseModel):
             MetricId.MAX_DRAWDOWN: 0.2,
         }
     )
+    shortlist_top_k: int | None = None  # None = include all eligible funds in memo
 
 
 # ---------------------------------------------------------------------------
@@ -265,6 +278,7 @@ class FactPack(BaseModel):
     universe_summary: dict
     mandate: MandateConfig
     benchmark_symbol: str
+    analyst_notes: list[WarningResolution] = Field(default_factory=list)
     instructions: dict = Field(
         default_factory=lambda: {
             "no_new_numbers": True,

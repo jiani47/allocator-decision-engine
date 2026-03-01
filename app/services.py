@@ -31,6 +31,7 @@ from app.core.schemas import (
     RawFileContext,
     RunCandidate,
     ScoredFund,
+    WarningResolution,
 )
 from app.core.scoring.ranking import rank_universe
 from app.domains.alt_invest.benchmark import (
@@ -95,10 +96,13 @@ def step_normalize_from_llm(
 
 
 def step_normalize(
-    df: pd.DataFrame, mapping: ColumnMapping, fhash: str
+    df: pd.DataFrame,
+    mapping: ColumnMapping,
+    fhash: str,
+    raw_context: RawFileContext | None = None,
 ) -> NormalizedUniverse:
     """Build normalized universe from DataFrame and confirmed mapping."""
-    return build_normalized_universe(df, mapping, fhash)
+    return build_normalized_universe(df, mapping, fhash, raw_context=raw_context)
 
 
 def step_fetch_benchmark(
@@ -140,12 +144,25 @@ def step_generate_memo(
     benchmark_symbol: str,
     settings: Settings,
     api_key_override: str | None = None,
+    warning_resolutions: list[WarningResolution] | None = None,
 ) -> tuple[MemoOutput, FactPack]:
     """Generate memo from LLM using fact pack."""
     import uuid
 
+    # Apply top-K filter if configured
+    effective_shortlist = shortlist
+    if mandate.shortlist_top_k is not None:
+        effective_shortlist = shortlist[: mandate.shortlist_top_k]
+
     run_id = str(uuid.uuid4())
-    fact_pack = build_fact_pack(run_id, shortlist, universe, mandate, benchmark_symbol)
+    fact_pack = build_fact_pack(
+        run_id,
+        effective_shortlist,
+        universe,
+        mandate,
+        benchmark_symbol,
+        analyst_notes=warning_resolutions,
+    )
     client = AnthropicClient(settings, api_key_override=api_key_override)
     memo = generate_memo(client, fact_pack)
     return memo, fact_pack

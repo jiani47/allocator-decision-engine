@@ -185,6 +185,7 @@ def build_normalized_universe(
     df: pd.DataFrame,
     mapping: ColumnMapping,
     file_hash: str,
+    raw_context: RawFileContext | None = None,
 ) -> NormalizedUniverse:
     """Main orchestrator: apply all normalizations, produce NormalizedUniverse."""
     logger.info("Building normalized universe from %d rows", len(df))
@@ -215,6 +216,10 @@ def build_normalized_universe(
 
     # Step 4: Normalize returns
     work["monthly_return"] = normalize_returns(work["monthly_return"])
+
+    # Step 4b: Preserve original file row indices for audit traceability
+    header_offset = raw_context.header_row_index + 1 if raw_context else 1
+    work["_original_file_row"] = work.index + header_offset
 
     # Step 5: Detect duplicates -> dedupe
     warnings = detect_duplicates(work)
@@ -265,6 +270,7 @@ def build_normalized_universe(
             date_range_start=periods[0],
             date_range_end=periods[-1],
             month_count=len(periods),
+            source_row_indices=sorted_group["_original_file_row"].astype(int).tolist(),
         )
         funds.append(fund)
 
@@ -278,6 +284,7 @@ def build_normalized_universe(
         source_file_hash=file_hash,
         column_mapping=mapping,
         normalization_timestamp=datetime.now(timezone.utc).isoformat(),
+        raw_context=raw_context,
     )
 
 
@@ -332,6 +339,9 @@ def build_normalized_universe_from_llm(
             "LLM extraction produced data with only 1 unique date"
         )
 
+    # Build row index lookup from LLM extraction
+    llm_row_lookup = {fund.fund_name: fund.source_row_indices for fund in llm_result.funds}
+
     # Build NormalizedFund objects
     funds: list[NormalizedFund] = []
     for fund_name, group in work.groupby("fund_name"):
@@ -363,6 +373,7 @@ def build_normalized_universe_from_llm(
             date_range_start=periods[0],
             date_range_end=periods[-1],
             month_count=len(periods),
+            source_row_indices=llm_row_lookup.get(str(fund_name), []),
         )
         funds.append(fund)
 

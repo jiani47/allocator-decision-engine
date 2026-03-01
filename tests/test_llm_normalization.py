@@ -190,6 +190,34 @@ class TestBuildNormalizedUniverseFromLLM:
         with pytest.raises(InvalidUniverseError, match="only 1 unique date"):
             build_normalized_universe_from_llm(llm_result, raw_ctx)
 
+    def test_source_row_indices_propagated(self):
+        """source_row_indices from LLMExtractedFund should appear on NormalizedFund."""
+        raw_ctx = _make_raw_context()
+        llm_result = _make_basic_llm_result()
+
+        universe = build_normalized_universe_from_llm(llm_result, raw_ctx)
+        alpha = next(f for f in universe.funds if f.fund_name == "Alpha Fund")
+        beta = next(f for f in universe.funds if f.fund_name == "Beta Fund")
+        assert alpha.source_row_indices == [1, 2, 3]
+        assert beta.source_row_indices == [4, 5, 6]
+
+    def test_source_row_indices_empty_when_missing(self):
+        """Funds with no source_row_indices get empty list."""
+        raw_ctx = _make_raw_context()
+        llm_result = LLMIngestionResult(
+            funds=[
+                LLMExtractedFund(
+                    fund_name="No Rows Fund",
+                    monthly_returns={"2022-01": 0.01, "2022-02": 0.02, "2022-03": 0.03},
+                ),
+            ],
+            interpretation_notes="",
+            ambiguities=[],
+        )
+        universe = build_normalized_universe_from_llm(llm_result, raw_ctx)
+        fund = universe.funds[0]
+        assert fund.source_row_indices == []
+
     def test_duplicate_detection_runs(self):
         raw_ctx = _make_raw_context()
         # Create result where duplicate would appear when flattening
