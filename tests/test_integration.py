@@ -11,16 +11,20 @@ from app.core.schemas import (
     MetricId,
     WarningResolution,
 )
+from app.core.hashing import file_hash
+from app.domains.alt_invest.ingest import (
+    build_normalized_universe,
+    infer_column_mapping,
+    read_csv,
+)
 from app.services import (
     step_compute_metrics,
     step_create_run,
     step_export_json,
     step_export_markdown,
-    step_normalize,
     step_normalize_from_llm,
     step_parse_raw,
     step_rank,
-    step_upload,
 )
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -33,11 +37,12 @@ class TestFullPipelineClean:
         content = (FIXTURES / "01_clean_universe.csv").read_bytes()
 
         # Step 1: Upload
-        df, mapping, fhash = step_upload(content, "01_clean_universe.csv")
+        df = read_csv(content, "01_clean_universe.csv")
         assert len(df) == 72  # 3 funds * 24 months
 
         # Step 2: Normalize
-        universe = step_normalize(df, mapping, fhash)
+        mapping = infer_column_mapping(df)
+        universe = build_normalized_universe(df, mapping, file_hash(content))
         assert len(universe.funds) == 3
 
         # Step 3: Metrics (no benchmark)
@@ -78,8 +83,9 @@ class TestFullPipelineClean:
 
     def test_source_row_indices_present(self):
         content = (FIXTURES / "01_clean_universe.csv").read_bytes()
-        df, mapping, fhash = step_upload(content, "01_clean_universe.csv")
-        universe = step_normalize(df, mapping, fhash)
+        df = read_csv(content, "01_clean_universe.csv")
+        mapping = infer_column_mapping(df)
+        universe = build_normalized_universe(df, mapping, file_hash(content))
 
         for fund in universe.funds:
             assert len(fund.source_row_indices) == fund.month_count
@@ -87,9 +93,10 @@ class TestFullPipelineClean:
 
     def test_source_row_indices_with_raw_context(self):
         content = (FIXTURES / "01_clean_universe.csv").read_bytes()
-        df, mapping, fhash = step_upload(content, "01_clean_universe.csv")
+        df = read_csv(content, "01_clean_universe.csv")
+        mapping = infer_column_mapping(df)
         raw_context = step_parse_raw(content, "01_clean_universe.csv")
-        universe = step_normalize(df, mapping, fhash, raw_context=raw_context)
+        universe = build_normalized_universe(df, mapping, file_hash(content), raw_context=raw_context)
 
         assert universe.raw_context is not None
         for fund in universe.funds:
@@ -102,8 +109,9 @@ class TestFullPipelineMessy:
     def test_messy_csv_normalizes(self):
         content = (FIXTURES / "02_messy_universe.csv").read_bytes()
 
-        df, mapping, fhash = step_upload(content, "02_messy_universe.csv")
-        universe = step_normalize(df, mapping, fhash)
+        df = read_csv(content, "02_messy_universe.csv")
+        mapping = infer_column_mapping(df)
+        universe = build_normalized_universe(df, mapping, file_hash(content))
 
         assert len(universe.funds) == 3
         assert len(universe.warnings) > 0
@@ -117,8 +125,9 @@ class TestFullPipelineMessy:
 
     def test_constraint_filtering(self):
         content = (FIXTURES / "01_clean_universe.csv").read_bytes()
-        df, mapping, fhash = step_upload(content, "01_clean_universe.csv")
-        universe = step_normalize(df, mapping, fhash)
+        df = read_csv(content, "01_clean_universe.csv")
+        mapping = infer_column_mapping(df)
+        universe = build_normalized_universe(df, mapping, file_hash(content))
         fund_metrics = step_compute_metrics(universe)
 
         # Exclude Global Macro
@@ -232,8 +241,9 @@ class TestTopKIntegration:
 
     def test_top_k_limits_shortlist(self):
         content = (FIXTURES / "01_clean_universe.csv").read_bytes()
-        df, mapping, fhash = step_upload(content, "01_clean_universe.csv")
-        universe = step_normalize(df, mapping, fhash)
+        df = read_csv(content, "01_clean_universe.csv")
+        mapping = infer_column_mapping(df)
+        universe = build_normalized_universe(df, mapping, file_hash(content))
         fund_metrics = step_compute_metrics(universe)
 
         # Rank all 3 funds
@@ -251,8 +261,9 @@ class TestTopKIntegration:
 
     def test_warning_resolutions_flow_to_fact_pack(self):
         content = (FIXTURES / "02_messy_universe.csv").read_bytes()
-        df, mapping, fhash = step_upload(content, "02_messy_universe.csv")
-        universe = step_normalize(df, mapping, fhash)
+        df = read_csv(content, "02_messy_universe.csv")
+        mapping = infer_column_mapping(df)
+        universe = build_normalized_universe(df, mapping, file_hash(content))
 
         assert len(universe.warnings) > 0
 

@@ -10,7 +10,7 @@ import streamlit as st
 
 from app.config import Settings
 from app.core.exceptions import DecisionEngineError
-from app.core.schemas import ColumnMapping, MandateConfig, MetricId
+from app.core.schemas import MandateConfig, MetricId
 
 st.set_page_config(
     page_title="Equi — Allocator Decision Engine",
@@ -44,10 +44,10 @@ def _go_to(step: int) -> None:
 def _reset_from(step: int) -> None:
     """Clear downstream state when going back."""
     keys_by_step = {
-        0: ["raw_df", "mapping", "file_hash", "universe", "benchmark", "fund_metrics",
+        0: ["universe", "benchmark", "fund_metrics",
             "mandate", "ranked", "run_candidates", "memo", "fact_pack", "decision_run",
-            "raw_context", "llm_result", "llm_validation_errors", "ingestion_method",
-            "api_key", "dismissed_warnings", "warning_resolutions"],
+            "raw_context", "llm_result", "llm_validation_errors",
+            "dismissed_warnings", "warning_resolutions"],
         1: ["universe", "benchmark", "fund_metrics", "mandate", "ranked",
             "run_candidates", "memo", "fact_pack", "decision_run",
             "dismissed_warnings", "warning_resolutions"],
@@ -83,87 +83,6 @@ with st.sidebar:
             del st.session_state[key]
         st.session_state["step"] = 0
         st.rerun()
-
-
-# ---------------------------------------------------------------------------
-# Helper: render deterministic column mapping step
-# ---------------------------------------------------------------------------
-def _render_column_mapping_step() -> None:
-    """Render the deterministic column mapping UI (fallback path)."""
-    df = st.session_state["raw_df"]
-    mapping = st.session_state["mapping"]
-    columns = list(df.columns)
-
-    st.markdown("We inferred the following column mapping. Adjust if needed.")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        fund_name_col = st.selectbox(
-            "Fund Name column",
-            columns,
-            index=columns.index(mapping.fund_name) if mapping.fund_name in columns else 0,
-        )
-        date_col = st.selectbox(
-            "Date column",
-            columns,
-            index=columns.index(mapping.date) if mapping.date in columns else 0,
-        )
-        return_col = st.selectbox(
-            "Monthly Return column",
-            columns,
-            index=columns.index(mapping.monthly_return)
-            if mapping.monthly_return in columns
-            else 0,
-        )
-
-    with col2:
-        optional_cols = ["(none)"] + columns
-        strategy_col = st.selectbox(
-            "Strategy column (optional)",
-            optional_cols,
-            index=optional_cols.index(mapping.strategy)
-            if mapping.strategy in optional_cols
-            else 0,
-        )
-        liquidity_col = st.selectbox(
-            "Liquidity Days column (optional)",
-            optional_cols,
-            index=optional_cols.index(mapping.liquidity_days)
-            if mapping.liquidity_days in optional_cols
-            else 0,
-        )
-
-    st.dataframe(df.head(10), use_container_width=True)
-
-    confirmed_mapping = ColumnMapping(
-        fund_name=fund_name_col,
-        date=date_col,
-        monthly_return=return_col,
-        strategy=strategy_col if strategy_col != "(none)" else None,
-        liquidity_days=liquidity_col if liquidity_col != "(none)" else None,
-    )
-
-    bc1, bc2 = st.columns(2)
-    with bc1:
-        if st.button("Back"):
-            _reset_from(0)
-            _go_to(0)
-            st.rerun()
-    with bc2:
-        if st.button("Confirm Mapping & Normalize", type="primary"):
-            try:
-                from app.services import step_normalize
-
-                st.session_state["mapping"] = confirmed_mapping
-                universe = step_normalize(
-                    df, confirmed_mapping, st.session_state["file_hash"],
-                    raw_context=st.session_state.get("raw_context"),
-                )
-                st.session_state["universe"] = universe
-                _go_to(2)
-                st.rerun()
-            except DecisionEngineError as e:
-                st.error(str(e))
 
 
 # ---------------------------------------------------------------------------
@@ -284,13 +203,8 @@ def _render_llm_review_step() -> None:
                 from app.services import step_llm_extract
 
                 settings = Settings()
-                api_key = st.session_state.get("api_key", "") or settings.anthropic_api_key
                 with st.spinner("Re-extracting with LLM..."):
-                    result, errors = step_llm_extract(
-                        raw_context,
-                        settings,
-                        api_key_override=api_key if api_key != settings.anthropic_api_key else None,
-                    )
+                    result, errors = step_llm_extract(raw_context, settings)
                 st.session_state["llm_result"] = result
                 st.session_state["llm_validation_errors"] = errors
                 st.rerun()
@@ -455,40 +369,20 @@ if st.session_state["step"] == 0:
         "Upload fund universe", type=["csv", "xlsx", "xls"]
     )
 
-    # Collect API key early (reused for LLM extraction and memo)
-    settings = Settings()
-    env_key = settings.anthropic_api_key
-
-    if not env_key:
-        api_key_input = st.text_input(
-            "Anthropic API key (required for LLM extraction and memo)",
-            type="password",
-            placeholder="sk-ant-...",
-            help="Get your key at https://console.anthropic.com/settings/keys",
-            key="api_key_input_step0",
-        )
-        st.caption(
-            "Your API key is used only for this session and is not persisted."
-        )
-    else:
-        api_key_input = env_key
-
     if uploaded:
         content = uploaded.getvalue()
         filename = uploaded.name
 
-        # Parse raw file (deterministic, instant)
         try:
             from app.services import step_parse_raw
 
+            settings = Settings()
             raw_context = step_parse_raw(
                 content, filename, max_rows=settings.ingestion_max_rows
             )
             st.session_state["uploaded_content"] = content
             st.session_state["uploaded_name"] = filename
             st.session_state["raw_context"] = raw_context
-            if api_key_input:
-                st.session_state["api_key"] = api_key_input
 
             st.success(
                 f"Parsed {raw_context.total_rows} rows, "
@@ -496,54 +390,18 @@ if st.session_state["step"] == 0:
                 f"{len(raw_context.data_rows)} data rows"
             )
 
-            # Also try deterministic parsing for fallback
-            if filename.lower().endswith(".csv"):
+            if st.button("Extract with LLM", type="primary"):
                 try:
-                    from app.services import step_upload
+                    from app.services import step_llm_extract
 
-                    df, mapping, fhash = step_upload(content, filename)
-                    st.session_state["raw_df"] = df
-                    st.session_state["mapping"] = mapping
-                    st.session_state["file_hash"] = fhash
-                except DecisionEngineError:
-                    pass  # Deterministic fallback not available
-
-            # Two paths
-            col1, col2 = st.columns(2)
-            with col1:
-                can_llm = bool(api_key_input)
-                if st.button(
-                    "Extract with LLM" + ("" if can_llm else " (API key required)"),
-                    type="primary",
-                    disabled=not can_llm,
-                ):
-                    try:
-                        from app.services import step_llm_extract
-
-                        with st.spinner("Extracting fund data with LLM..."):
-                            result, errors = step_llm_extract(
-                                raw_context,
-                                settings,
-                                api_key_override=api_key_input if api_key_input != env_key else None,
-                            )
-                        st.session_state["llm_result"] = result
-                        st.session_state["llm_validation_errors"] = errors
-                        st.session_state["ingestion_method"] = "llm"
-                        _go_to(1)
-                        st.rerun()
-                    except DecisionEngineError as e:
-                        st.error(f"LLM extraction failed: {e}")
-
-            with col2:
-                has_deterministic = "raw_df" in st.session_state
-                if st.button(
-                    "Use deterministic mapping"
-                    + ("" if has_deterministic else " (CSV only)"),
-                    disabled=not has_deterministic,
-                ):
-                    st.session_state["ingestion_method"] = "deterministic"
+                    with st.spinner("Extracting fund data with LLM..."):
+                        result, errors = step_llm_extract(raw_context, settings)
+                    st.session_state["llm_result"] = result
+                    st.session_state["llm_validation_errors"] = errors
                     _go_to(1)
                     st.rerun()
+                except DecisionEngineError as e:
+                    st.error(f"LLM extraction failed: {e}")
 
         except Exception as e:
             st.error(f"Failed to parse file: {e}")
@@ -552,14 +410,8 @@ if st.session_state["step"] == 0:
 # Step 1: Review Interpretation
 # ---------------------------------------------------------------------------
 elif st.session_state["step"] == 1:
-    ingestion_method = st.session_state.get("ingestion_method", "deterministic")
-
-    if ingestion_method == "llm":
-        st.header("Step 2: Review LLM Interpretation")
-        _render_llm_review_step()
-    else:
-        st.header("Step 2: Confirm Schema Mapping")
-        _render_column_mapping_step()
+    st.header("Step 2: Review LLM Interpretation")
+    _render_llm_review_step()
 
 # ---------------------------------------------------------------------------
 # Step 2: Review Validation Warnings
@@ -925,32 +777,9 @@ elif st.session_state["step"] == 7:
     st.header("Step 8: IC Memo Generation")
 
     st.markdown(
-        "To generate an IC memo, we use Claude (Anthropic) to draft narrative "
+        "Generate an IC memo using Claude to draft narrative "
         "from the deterministic fact pack produced in the previous steps."
     )
-
-    settings = Settings()
-    env_key = settings.anthropic_api_key
-
-    # Reuse API key from session state if already collected in Step 0
-    stored_key = st.session_state.get("api_key", "")
-
-    if env_key:
-        api_key = env_key
-    elif stored_key:
-        api_key = stored_key
-        st.info("Using API key provided in Step 1.")
-    else:
-        api_key = st.text_input(
-            "Enter your Anthropic API key",
-            type="password",
-            placeholder="sk-ant-...",
-            help="Get your key at https://console.anthropic.com/settings/keys",
-        )
-        st.caption(
-            "Your API key is used only for this request and is not persisted. "
-            "It's held in temporary session memory and discarded when the session ends."
-        )
 
     bc1, bc2 = st.columns(2)
     with bc1:
@@ -963,29 +792,26 @@ elif st.session_state["step"] == 7:
             _go_to(9)
             st.rerun()
 
-    if api_key:
-        if st.button("Generate Memo", type="primary"):
-            try:
-                from app.services import step_generate_memo
+    if st.button("Generate Memo", type="primary"):
+        try:
+            from app.services import step_generate_memo
 
-                with st.spinner("Generating IC memo via Claude..."):
-                    memo, fact_pack = step_generate_memo(
-                        st.session_state["ranked"],
-                        st.session_state["universe"],
-                        st.session_state["mandate"],
-                        st.session_state.get("benchmark_symbol", "SPY"),
-                        settings,
-                        api_key_override=api_key if not env_key else None,
-                        warning_resolutions=st.session_state.get("warning_resolutions"),
-                    )
-                st.session_state["memo"] = memo
-                st.session_state["fact_pack"] = fact_pack
-                _go_to(8)
-                st.rerun()
-            except DecisionEngineError as e:
-                st.error(f"Memo generation failed: {e}")
-    elif not env_key and not stored_key:
-        st.info("Enter your API key above to generate a memo, or skip to export.")
+            settings = Settings()
+            with st.spinner("Generating IC memo via Claude..."):
+                memo, fact_pack = step_generate_memo(
+                    st.session_state["ranked"],
+                    st.session_state["universe"],
+                    st.session_state["mandate"],
+                    st.session_state.get("benchmark_symbol", "SPY"),
+                    settings,
+                    warning_resolutions=st.session_state.get("warning_resolutions"),
+                )
+            st.session_state["memo"] = memo
+            st.session_state["fact_pack"] = fact_pack
+            _go_to(8)
+            st.rerun()
+        except DecisionEngineError as e:
+            st.error(f"Memo generation failed: {e}")
 
 # ---------------------------------------------------------------------------
 # Step 8: Audit Claims

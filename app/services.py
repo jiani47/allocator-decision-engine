@@ -8,19 +8,15 @@ from __future__ import annotations
 
 import logging
 
-import pandas as pd
-
 from app.config import Settings
 from app.core.decision_run import create_decision_run
 from app.core.evidence.audit import build_claim_evidence, MetricEvidence
 from app.core.evidence.fact_pack import build_fact_pack
 from app.core.export import export_decision_run_json, export_memo_markdown
-from app.core.hashing import file_hash
 from app.core.metrics.compute import compute_all_metrics
 from app.core.schemas import (
     BenchmarkSeries,
     Claim,
-    ColumnMapping,
     DecisionRun,
     FactPack,
     FundMetrics,
@@ -39,26 +35,13 @@ from app.domains.alt_invest.benchmark import (
     fetch_benchmark_yfinance,
 )
 from app.domains.alt_invest.ingest import (
-    build_normalized_universe,
     build_normalized_universe_from_llm,
-    infer_column_mapping,
-    read_csv,
 )
 from app.domains.alt_invest.raw_parser import parse_raw_file
 from app.llm.anthropic_client import AnthropicClient
 from app.llm.memo_service import generate_memo
 
 logger = logging.getLogger("equi.services")
-
-
-def step_upload(
-    file_content: bytes, filename: str
-) -> tuple[pd.DataFrame, ColumnMapping, str]:
-    """Read CSV and infer column mapping. Returns (df, mapping, file_hash)."""
-    df = read_csv(file_content, filename)
-    mapping = infer_column_mapping(df)
-    fhash = file_hash(file_content)
-    return df, mapping, fhash
 
 
 def step_parse_raw(
@@ -73,7 +56,6 @@ def step_parse_raw(
 def step_llm_extract(
     raw_context: RawFileContext,
     settings: Settings,
-    api_key_override: str | None = None,
 ) -> tuple[LLMIngestionResult, list[str]]:
     """Extract fund data from raw context using LLM.
 
@@ -81,7 +63,7 @@ def step_llm_extract(
     """
     from app.llm.ingestion_service import extract_funds_via_llm, validate_llm_extraction
 
-    client = AnthropicClient(settings, api_key_override=api_key_override)
+    client = AnthropicClient(settings)
     result = extract_funds_via_llm(client, raw_context)
     validation_errors = validate_llm_extraction(result)
     return result, validation_errors
@@ -93,16 +75,6 @@ def step_normalize_from_llm(
 ) -> NormalizedUniverse:
     """Build normalized universe from LLM-extracted fund data."""
     return build_normalized_universe_from_llm(llm_result, raw_context)
-
-
-def step_normalize(
-    df: pd.DataFrame,
-    mapping: ColumnMapping,
-    fhash: str,
-    raw_context: RawFileContext | None = None,
-) -> NormalizedUniverse:
-    """Build normalized universe from DataFrame and confirmed mapping."""
-    return build_normalized_universe(df, mapping, fhash, raw_context=raw_context)
 
 
 def step_fetch_benchmark(
@@ -143,7 +115,6 @@ def step_generate_memo(
     mandate: MandateConfig,
     benchmark_symbol: str,
     settings: Settings,
-    api_key_override: str | None = None,
     warning_resolutions: list[WarningResolution] | None = None,
 ) -> tuple[MemoOutput, FactPack]:
     """Generate memo from LLM using fact pack."""
@@ -163,7 +134,7 @@ def step_generate_memo(
         benchmark_symbol,
         analyst_notes=warning_resolutions,
     )
-    client = AnthropicClient(settings, api_key_override=api_key_override)
+    client = AnthropicClient(settings)
     memo = generate_memo(client, fact_pack)
     return memo, fact_pack
 
