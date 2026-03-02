@@ -10,7 +10,10 @@ from app.core.schemas import (
     BenchmarkSeries,
     DecisionRun,
     FactPack,
+    FundEligibility,
     FundMetrics,
+    GroupingCriteria,
+    GroupRun,
     METRIC_VERSION,
     MandateConfig,
     MemoOutput,
@@ -29,6 +32,9 @@ def create_decision_run(
     ranked_shortlist: list[ScoredFund],
     memo: MemoOutput | None = None,
     fact_pack: FactPack | None = None,
+    fund_eligibility: list[FundEligibility] | None = None,
+    grouping_criteria: GroupingCriteria | None = None,
+    group_runs: list[GroupRun] | None = None,
 ) -> DecisionRun:
     """Assemble immutable DecisionRun record."""
     input_data = {
@@ -50,4 +56,7 @@ def create_decision_run(
         ranked_shortlist=ranked_shortlist,
         memo=memo,
         fact_pack=fact_pack,
+        fund_eligibility=fund_eligibility or [],
+        grouping_criteria=grouping_criteria,
+        group_runs=group_runs or [],
     )

@@ -10,6 +10,7 @@ from app.core.schemas import (
     MetricId,
     NormalizedUniverse,
     ScoredFund,
+    WarningResolution,
 )
 
 
@@ -19,6 +20,9 @@ def build_fact_pack(
     universe: NormalizedUniverse,
     mandate: MandateConfig,
     benchmark_symbol: str,
+    analyst_notes: list[WarningResolution] | None = None,
+    group_name: str = "",
+    group_rationale: str = "",
 ) -> FactPack:
     """Assemble the deterministic fact pack that the LLM will use."""
     universe_summary = {
@@ -34,6 +38,9 @@ def build_fact_pack(
         universe_summary=universe_summary,
         mandate=mandate,
         benchmark_symbol=benchmark_symbol,
+        analyst_notes=analyst_notes or [],
+        group_name=group_name,
+        group_rationale=group_rationale,
     )
 
 
@@ -66,6 +73,38 @@ def build_memo_prompt(fact_pack: FactPack) -> str:
         shortlist_data.append(fund_data)
 
     mandate_data = fact_pack.mandate.model_dump()
+    n_funds = len(fact_pack.shortlist)
+
+    # Build analyst notes section if present
+    analyst_notes_section = ""
+    if fact_pack.analyst_notes:
+        notes_lines = []
+        for note in fact_pack.analyst_notes:
+            fund_str = f' Fund "{note.fund_name}"' if note.fund_name else ""
+            analyst_str = f' -- Analyst: "{note.analyst_note}"' if note.analyst_note else ""
+            notes_lines.append(
+                f"- [{note.category}]{fund_str}: {note.original_message} "
+                f"(Action: {note.action}){analyst_str}"
+            )
+        analyst_notes_section = f"""
+
+## Analyst Data Quality Notes
+
+The analyst reviewed the following data quality warnings and provided these notes.
+Include a "Data Quality Notes" section at the end of the memo summarizing these items.
+
+{chr(10).join(notes_lines)}
+"""
+
+    # Build group context section if present
+    group_context_section = ""
+    scope_description = "the shortlist"
+    if fact_pack.group_name:
+        group_context_section = f"""
+**Group:** {fact_pack.group_name}
+**Grouping Rationale:** {fact_pack.group_rationale}
+"""
+        scope_description = f"the **{fact_pack.group_name}** peer group ({n_funds} funds)"
 
     prompt = f"""You are a senior investment analyst drafting an Investment Committee (IC) memo.
 
@@ -77,18 +116,20 @@ Based on the following deterministic evaluation results, draft a structured IC m
 **Universe:** {json.dumps(fact_pack.universe_summary)}
 **Benchmark:** {fact_pack.benchmark_symbol}
 **Mandate Configuration:** {json.dumps(mandate_data, default=str)}
-
-**Ranked Shortlist:**
+{group_context_section}
+**Ranked Shortlist ({n_funds} fund(s)):**
 {json.dumps(shortlist_data, indent=2, default=str)}
-
+{analyst_notes_section}
 ## Instructions
 
-1. Draft a professional IC memo with sections: Executive Summary, Universe Overview, Top Recommendations, Risk Considerations, Constraint Analysis.
-2. Every factual claim MUST reference specific metric_id values from this list: {[m.value for m in MetricId]}
-3. Every claim MUST reference specific fund names from the shortlist.
-4. Do NOT invent any numbers not present in the data above.
-5. Do NOT hallucinate performance figures.
-6. Format numbers appropriately (percentages for returns/vol/drawdown, ratios for Sharpe).
+1. Draft a professional IC memo with sections: Executive Summary, Universe Overview, Top Recommendations, Risk Considerations, Constraint Analysis. This memo covers {scope_description}.
+2. The shortlist contains the top {n_funds} fund(s). Provide analysis of ALL {n_funds} fund(s) in the shortlist. Do not omit any fund from the analysis.
+3. Every factual claim MUST reference specific metric_id values from this list: {[m.value for m in MetricId]}
+4. Every claim MUST reference specific fund names from the shortlist.
+5. Do NOT invent any numbers not present in the data above.
+6. Do NOT hallucinate performance figures.
+7. Format numbers appropriately (percentages for returns/vol/drawdown, ratios for Sharpe).
+8. If analyst data quality notes are provided above, include a "Data Quality Notes" section at the end of the memo summarizing the analyst's review decisions.
 
 ## Output Format
 
