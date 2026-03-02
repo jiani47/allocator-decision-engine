@@ -214,24 +214,30 @@ def step_generate_memo(
 
 def step_create_run(
     universe: NormalizedUniverse,
-    benchmark: BenchmarkSeries | None,
     mandate: MandateConfig,
-    all_fund_metrics: list[FundMetrics],
-    run_candidates: list[RunCandidate],
-    ranked_shortlist: list[ScoredFund],
+    benchmark: BenchmarkSeries | None = None,
+    all_fund_metrics: list[FundMetrics] | None = None,
+    run_candidates: list[RunCandidate] | None = None,
+    ranked_shortlist: list[ScoredFund] | None = None,
     memo: MemoOutput | None = None,
     fact_pack: FactPack | None = None,
+    fund_eligibility: list[FundEligibility] | None = None,
+    grouping_criteria: GroupingCriteria | None = None,
+    group_runs: list[GroupRun] | None = None,
 ) -> DecisionRun:
     """Assemble DecisionRun record."""
     return create_decision_run(
         universe=universe,
         benchmark=benchmark,
         mandate=mandate,
-        all_fund_metrics=all_fund_metrics,
-        run_candidates=run_candidates,
-        ranked_shortlist=ranked_shortlist,
+        all_fund_metrics=all_fund_metrics or [],
+        run_candidates=run_candidates or [],
+        ranked_shortlist=ranked_shortlist or [],
         memo=memo,
         fact_pack=fact_pack,
+        fund_eligibility=fund_eligibility,
+        grouping_criteria=grouping_criteria,
+        group_runs=group_runs,
     )
 
 
