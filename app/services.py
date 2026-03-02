@@ -22,6 +22,8 @@ from app.core.schemas import (
     FactPack,
     FundEligibility,
     FundMetrics,
+    GroupingCriteria,
+    LLMGroupingResult,
     LLMIngestionResult,
     MandateConfig,
     MemoOutput,
@@ -147,6 +149,26 @@ def step_classify_eligibility(
         )
 
     return eligibility
+
+
+def step_group_funds(
+    universe: NormalizedUniverse,
+    eligibility: list[FundEligibility],
+    criteria: GroupingCriteria,
+    all_metrics: list[FundMetrics],
+    settings: Settings,
+) -> LLMGroupingResult:
+    """LLM-powered fund grouping."""
+    from app.llm.grouping_service import classify_funds_into_groups
+
+    eligible_names = {e.fund_name for e in eligibility if e.eligible}
+    eligible_funds = [f for f in universe.funds if f.fund_name in eligible_names]
+    eligible_metrics = [m for m in all_metrics if m.fund_name in eligible_names]
+
+    client = AnthropicClient(settings)
+    return classify_funds_into_groups(
+        client, eligible_funds, universe.raw_context, criteria, eligible_metrics
+    )
 
 
 def step_rank(
