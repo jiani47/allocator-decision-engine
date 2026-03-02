@@ -21,8 +21,10 @@ from app.core.schemas import (
     DecisionRun,
     FactPack,
     FundEligibility,
+    FundGroup,
     FundMetrics,
     GroupingCriteria,
+    GroupRun,
     LLMGroupingResult,
     LLMIngestionResult,
     MandateConfig,
@@ -248,3 +250,99 @@ def step_export_markdown(decision_run: DecisionRun) -> str:
 def step_export_json(decision_run: DecisionRun) -> str:
     """Export as JSON."""
     return export_decision_run_json(decision_run)
+
+
+# ---------------------------------------------------------------------------
+# Per-group pipeline helpers
+# ---------------------------------------------------------------------------
+
+
+def _build_group_universe(
+    universe: NormalizedUniverse, group: FundGroup
+) -> NormalizedUniverse:
+    """Construct a sub-universe containing only the group's funds."""
+    group_set = set(group.fund_names)
+    return NormalizedUniverse(
+        funds=[f for f in universe.funds if f.fund_name in group_set],
+        warnings=[
+            w
+            for w in universe.warnings
+            if w.fund_name in group_set or w.fund_name is None
+        ],
+        source_file_hash=universe.source_file_hash,
+        normalization_timestamp=universe.normalization_timestamp,
+        ingestion_method=universe.ingestion_method,
+        raw_context=universe.raw_context,
+        llm_interpretation_notes=universe.llm_interpretation_notes,
+    )
+
+
+def step_rank_group(
+    universe: NormalizedUniverse,
+    group: FundGroup,
+    mandate: MandateConfig,
+    min_history_months: int = 12,
+) -> GroupRun:
+    """Rank funds within a single group.
+
+    Fetches group benchmark, computes metrics, ranks.
+    Returns a GroupRun with populated metrics and ranking.
+    """
+    group_universe = _build_group_universe(universe, group)
+
+    # Fetch benchmark for this group
+    benchmark = None
+    if group.benchmark_symbol:
+        benchmark = step_fetch_benchmark(group.benchmark_symbol, group_universe)
+        group.benchmark = benchmark
+
+    # Compute metrics for group's funds
+    fund_metrics = step_compute_metrics(
+        group_universe, benchmark, min_history_months
+    )
+
+    # Rank within group
+    ranked, run_candidates = step_rank(group_universe, fund_metrics, mandate)
+
+    return GroupRun(
+        group=group,
+        fund_metrics=fund_metrics,
+        ranked_shortlist=ranked,
+        run_candidates=run_candidates,
+    )
+
+
+def step_generate_group_memo(
+    group_run: GroupRun,
+    universe: NormalizedUniverse,
+    mandate: MandateConfig,
+    settings: Settings,
+    warning_resolutions: list[WarningResolution] | None = None,
+) -> GroupRun:
+    """Generate memo for a single group. Returns updated GroupRun."""
+    import uuid
+
+    effective_shortlist = group_run.ranked_shortlist
+    if mandate.shortlist_top_k is not None:
+        effective_shortlist = group_run.ranked_shortlist[: mandate.shortlist_top_k]
+
+    group_universe = _build_group_universe(universe, group_run.group)
+
+    run_id = str(uuid.uuid4())
+    fact_pack = build_fact_pack(
+        run_id,
+        effective_shortlist,
+        group_universe,
+        mandate,
+        group_run.group.benchmark_symbol or "None",
+        analyst_notes=warning_resolutions,
+        group_name=group_run.group.group_name,
+        group_rationale=group_run.group.grouping_rationale,
+    )
+
+    client = AnthropicClient(settings)
+    memo = generate_memo(client, fact_pack)
+
+    group_run.memo = memo
+    group_run.fact_pack = fact_pack
+    return group_run
