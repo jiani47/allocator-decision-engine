@@ -202,8 +202,7 @@ class MandateConfig(BaseModel):
     min_liquidity_days: int | None = None
     max_drawdown_tolerance: float | None = None  # e.g., -0.20 for 20% max DD
     target_volatility: float | None = None
-    strategy_include: list[str] = Field(default_factory=list)
-    strategy_exclude: list[str] = Field(default_factory=list)
+    min_history_months: int = 12
     weights: dict[MetricId, float] = Field(
         default_factory=lambda: {
             MetricId.ANNUALIZED_RETURN: 0.4,
@@ -254,6 +253,33 @@ class RunCandidate(BaseModel):
     exclusion_reason: str | None = None
 
 
+class FundEligibility(BaseModel):
+    """Mandate-based eligibility classification per fund."""
+
+    fund_name: str
+    eligible: bool
+    failing_constraints: list[ConstraintResult] = Field(default_factory=list)
+
+
+class GroupingCriteria(BaseModel):
+    """User-provided criteria for LLM fund grouping."""
+
+    standard_criteria: list[str] = Field(default_factory=list)
+    free_text: str = ""
+    max_groups: int = 2
+
+
+class FundGroup(BaseModel):
+    """A group of funds with its own benchmark."""
+
+    group_name: str
+    group_id: str
+    fund_names: list[str]
+    benchmark_symbol: str | None = None
+    benchmark: BenchmarkSeries | None = None
+    grouping_rationale: str = ""
+
+
 class Claim(BaseModel):
     """A single claim extracted from an LLM-generated memo."""
 
@@ -286,6 +312,27 @@ class FactPack(BaseModel):
             "reference_metric_ids": True,
         }
     )
+    group_name: str = ""
+    group_rationale: str = ""
+
+
+class GroupRun(BaseModel):
+    """Per-group ranking, metrics, and memo."""
+
+    group: FundGroup
+    fund_metrics: list[FundMetrics]
+    ranked_shortlist: list[ScoredFund]
+    run_candidates: list[RunCandidate]
+    memo: MemoOutput | None = None
+    fact_pack: FactPack | None = None
+
+
+class LLMGroupingResult(BaseModel):
+    """Structured result from LLM fund grouping."""
+
+    groups: list[FundGroup]
+    rationale: str
+    ambiguities: list[str] = Field(default_factory=list)
 
 
 class DecisionRun(BaseModel):
@@ -303,3 +350,6 @@ class DecisionRun(BaseModel):
     ranked_shortlist: list[ScoredFund]
     memo: MemoOutput | None = None
     fact_pack: FactPack | None = None
+    fund_eligibility: list[FundEligibility] = Field(default_factory=list)
+    grouping_criteria: GroupingCriteria | None = None
+    group_runs: list[GroupRun] = Field(default_factory=list)

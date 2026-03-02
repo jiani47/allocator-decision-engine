@@ -24,3 +24,7 @@ class MemoGenerationError(DecisionEngineError):
 
 class LLMIngestionError(DecisionEngineError):
     """Raised when LLM-based ingestion fails."""
+
+
+class FundGroupingError(DecisionEngineError):
+    """Raised when LLM-based fund grouping fails."""
