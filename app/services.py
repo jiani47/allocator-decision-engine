@@ -17,8 +17,10 @@ from app.core.metrics.compute import compute_all_metrics
 from app.core.schemas import (
     BenchmarkSeries,
     Claim,
+    ConstraintResult,
     DecisionRun,
     FactPack,
+    FundEligibility,
     FundMetrics,
     LLMIngestionResult,
     MandateConfig,
@@ -98,6 +100,53 @@ def step_compute_metrics(
 ) -> list[FundMetrics]:
     """Compute all metrics for universe."""
     return compute_all_metrics(universe.funds, benchmark, min_history_months)
+
+
+def step_classify_eligibility(
+    universe: NormalizedUniverse,
+    all_metrics: list[FundMetrics],
+    mandate: MandateConfig,
+) -> list[FundEligibility]:
+    """Apply mandate constraints to classify funds as eligible/ineligible.
+
+    Does NOT filter — all funds remain in the universe. Returns eligibility
+    status for each fund, including which constraints failed.
+    """
+    from app.core.scoring.ranking import build_constraints, evaluate_constraints
+
+    constraints = build_constraints(mandate)
+    metrics_by_name = {m.fund_name: m for m in all_metrics}
+
+    eligibility: list[FundEligibility] = []
+    for fund in universe.funds:
+        fm = metrics_by_name.get(fund.fund_name)
+        if fm is None or fm.insufficient_history:
+            eligibility.append(
+                FundEligibility(
+                    fund_name=fund.fund_name,
+                    eligible=False,
+                    failing_constraints=[
+                        ConstraintResult(
+                            constraint_name="history",
+                            passed=False,
+                            explanation=f"Insufficient history ({fm.month_count if fm else 0} months)",
+                        )
+                    ],
+                )
+            )
+            continue
+
+        results = evaluate_constraints(fund, fm, constraints)
+        failing = [r for r in results if not r.passed]
+        eligibility.append(
+            FundEligibility(
+                fund_name=fund.fund_name,
+                eligible=len(failing) == 0,
+                failing_constraints=failing,
+            )
+        )
+
+    return eligibility
 
 
 def step_rank(
