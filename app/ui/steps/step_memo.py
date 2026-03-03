@@ -1,78 +1,66 @@
-"""Step 6: Memo Generation."""
+"""Step 3: Memo Generation."""
 import streamlit as st
 from app.config import Settings
 from app.core.exceptions import DecisionEngineError
-from app.ui.state import go_to, reset_from
+from app.ui.widgets.navigation import render_nav_buttons
 
 
 def render() -> None:
-    st.header("Step 7: IC Memo Generation")
+    st.header("Step 4: IC Memo Generation")
     st.markdown(
-        "Generate one IC memo per group using Claude. "
-        "Each memo is drafted from the deterministic fact pack for that group."
+        "Generate an IC memo using Claude. "
+        "The memo is drafted from the deterministic fact pack."
     )
 
-    group_runs = st.session_state["group_runs"]
+    gr = st.session_state["group_runs"][0]
+    mandate = st.session_state["mandate"]
 
-    tab_labels = [f"{gr.group.group_name}" for gr in group_runs]
-    tabs = st.tabs(tab_labels)
+    # Shortlist size control
+    top_k = st.number_input(
+        "Funds in memo (top N by rank)",
+        min_value=1,
+        max_value=50,
+        value=mandate.shortlist_top_k,
+        help="Only the top N ranked funds will be included in the memo.",
+        key="memo_top_k",
+    )
+    if top_k != mandate.shortlist_top_k:
+        mandate = mandate.model_copy(update={"shortlist_top_k": top_k})
+        st.session_state["mandate"] = mandate
 
-    for tab, gr in zip(tabs, group_runs):
-        with tab:
-            if gr.memo:
-                st.markdown(gr.memo.memo_text)
-                if st.button(
-                    "Regenerate", key=f"regen_memo_{gr.group.group_id}"
-                ):
-                    gr.memo = None
-                    gr.fact_pack = None
-                    st.rerun()
-            else:
-                st.info(f"No memo generated yet for {gr.group.group_name}.")
-                if st.button(
-                    f"Generate Memo for {gr.group.group_name}",
-                    type="primary",
-                    key=f"gen_memo_{gr.group.group_id}",
-                ):
-                    try:
-                        from app.services import step_generate_group_memo
-
-                        settings = Settings()
-                        with st.spinner(
-                            f"Generating memo for {gr.group.group_name}..."
-                        ):
-                            updated_gr = step_generate_group_memo(
-                                gr,
-                                st.session_state["universe"],
-                                st.session_state["mandate"],
-                                settings,
-                                warning_resolutions=st.session_state.get(
-                                    "warning_resolutions"
-                                ),
-                            )
-                        # Update in place
-                        idx = group_runs.index(gr)
-                        group_runs[idx] = updated_gr
-                        st.session_state["group_runs"] = group_runs
-                        st.rerun()
-                    except DecisionEngineError as e:
-                        st.error(f"Memo generation failed: {e}")
-
-    # Navigation
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("Back", key="memo_back"):
-            reset_from(5)
-            go_to(5)
+    if gr.memo:
+        st.markdown(gr.memo.memo_text)
+        if st.button("Regenerate", key="regen_memo"):
+            gr.memo = None
+            gr.fact_pack = None
             st.rerun()
-    with col2:
-        if st.button("Skip to Export", key="memo_skip"):
-            go_to(8)
-            st.rerun()
-    with col3:
-        # Only advance if at least one memo exists
-        has_memo = any(gr.memo for gr in group_runs)
-        if has_memo:
-            if st.button("Audit Claims", type="primary", key="to_audit"):
-                go_to(7)
+    else:
+        st.info("No memo generated yet.")
+        if st.button("Generate Memo", type="primary", key="gen_memo"):
+            try:
+                from app.services import step_generate_group_memo
+
+                settings = Settings()
+                with st.spinner("Generating memo..."):
+                    updated_gr = step_generate_group_memo(
+                        gr,
+                        st.session_state["universe"],
+                        st.session_state["mandate"],
+                        settings,
+                        warning_resolutions=st.session_state.get(
+                            "warning_resolutions"
+                        ),
+                    )
+                st.session_state["group_runs"] = [updated_gr]
                 st.rerun()
+            except DecisionEngineError as e:
+                st.error(f"Memo generation failed: {e}")
+
+    has_memo = gr.memo is not None
+    render_nav_buttons(
+        back_step=2,
+        forward_step=4 if has_memo else None,
+        skip_label="Skip to Export",
+        skip_step=5,
+        key_prefix="memo",
+    )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from app.core.schemas import DecisionRun, FundEligibility, GroupingCriteria, GroupRun, MetricId
+from app.core.schemas import DecisionRun, FundEligibility, GroupRun, MetricId
 
 
 def export_memo_markdown(decision_run: DecisionRun) -> str:

@@ -1,11 +1,11 @@
-"""Step 8: Export & Archive."""
+"""Step 5: Export & Archive."""
 import streamlit as st
 from app.services import step_create_run, step_export_json, step_export_markdown
-from app.ui.state import go_to
+from app.ui.widgets.navigation import render_nav_buttons
 
 
 def render() -> None:
-    st.header("Step 9: Export & Archive")
+    st.header("Step 6: Export & Archive")
 
     # Build decision run
     if "decision_run" not in st.session_state:
@@ -13,7 +13,6 @@ def render() -> None:
             universe=st.session_state["universe"],
             mandate=st.session_state["mandate"],
             fund_eligibility=st.session_state.get("eligibility"),
-            grouping_criteria=st.session_state.get("grouping_criteria"),
             group_runs=st.session_state.get("group_runs"),
             benchmark=None,
             all_fund_metrics=st.session_state.get("fund_metrics"),
@@ -31,15 +30,13 @@ def render() -> None:
     st.markdown(f"**Metric Version:** {decision_run.metric_version}")
     st.markdown(f"**Input Hash:** `{decision_run.input_hash[:16]}...`")
 
-    # Group summary
-    if decision_run.group_runs:
-        st.subheader("Groups")
-        for gr in decision_run.group_runs:
-            st.write(
-                f"- **{gr.group.group_name}**: {len(gr.ranked_shortlist)} ranked funds, "
-                f"benchmark: {gr.group.benchmark_symbol or 'none'}, "
-                f"memo: {'yes' if gr.memo else 'no'}"
-            )
+    # Summary
+    gr = st.session_state["group_runs"][0]
+    st.write(
+        f"**Ranked funds:** {len(gr.ranked_shortlist)}, "
+        f"**Benchmark:** {gr.group.benchmark_symbol or 'none'}, "
+        f"**Memo:** {'yes' if gr.memo else 'no'}"
+    )
 
     # Export buttons
     col1, col2 = st.columns(2)
@@ -64,9 +61,5 @@ def render() -> None:
     with st.expander("Preview Markdown Export"):
         st.markdown(md_content)
 
-    if st.button("Back"):
-        has_memo = any(
-            gr.memo for gr in st.session_state.get("group_runs", [])
-        )
-        go_to(7 if has_memo else 5)
-        st.rerun()
+    has_memo = gr.memo is not None
+    render_nav_buttons(back_step=4 if has_memo else 2, key_prefix="export")

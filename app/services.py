@@ -23,9 +23,7 @@ from app.core.schemas import (
     FundEligibility,
     FundGroup,
     FundMetrics,
-    GroupingCriteria,
     GroupRun,
-    LLMGroupingResult,
     LLMIngestionResult,
     MandateConfig,
     MemoOutput,
@@ -93,6 +91,12 @@ def step_fetch_benchmark(
     start = min(all_starts)
     end = max(all_ends)
 
+    # yfinance expects YYYY-MM-DD; fund dates may be YYYY-MM
+    if len(start) == 7:
+        start = f"{start}-01"
+    if len(end) == 7:
+        end = f"{end}-28"
+
     benchmark = fetch_benchmark_yfinance(symbol, start, end)
     return align_benchmark_to_universe(benchmark, universe)
 
@@ -153,25 +157,6 @@ def step_classify_eligibility(
     return eligibility
 
 
-def step_group_funds(
-    universe: NormalizedUniverse,
-    eligibility: list[FundEligibility],
-    criteria: GroupingCriteria,
-    all_metrics: list[FundMetrics],
-    settings: Settings,
-) -> LLMGroupingResult:
-    """LLM-powered fund grouping."""
-    from app.llm.grouping_service import classify_funds_into_groups
-
-    eligible_names = {e.fund_name for e in eligibility if e.eligible}
-    eligible_funds = [f for f in universe.funds if f.fund_name in eligible_names]
-    eligible_metrics = [m for m in all_metrics if m.fund_name in eligible_names]
-
-    client = AnthropicClient(settings)
-    return classify_funds_into_groups(
-        client, eligible_funds, universe.raw_context, criteria, eligible_metrics
-    )
-
 
 def step_rank(
     universe: NormalizedUniverse,
@@ -193,10 +178,8 @@ def step_generate_memo(
     """Generate memo from LLM using fact pack."""
     import uuid
 
-    # Apply top-K filter if configured
-    effective_shortlist = shortlist
-    if mandate.shortlist_top_k is not None:
-        effective_shortlist = shortlist[: mandate.shortlist_top_k]
+    # Apply top-K filter
+    effective_shortlist = shortlist[: mandate.shortlist_top_k]
 
     run_id = str(uuid.uuid4())
     fact_pack = build_fact_pack(
@@ -222,7 +205,6 @@ def step_create_run(
     memo: MemoOutput | None = None,
     fact_pack: FactPack | None = None,
     fund_eligibility: list[FundEligibility] | None = None,
-    grouping_criteria: GroupingCriteria | None = None,
     group_runs: list[GroupRun] | None = None,
 ) -> DecisionRun:
     """Assemble DecisionRun record."""
@@ -236,7 +218,6 @@ def step_create_run(
         memo=memo,
         fact_pack=fact_pack,
         fund_eligibility=fund_eligibility,
-        grouping_criteria=grouping_criteria,
         group_runs=group_runs,
     )
 
@@ -296,9 +277,9 @@ def step_rank_group(
     """
     group_universe = _build_group_universe(universe, group)
 
-    # Fetch benchmark for this group
-    benchmark = None
-    if group.benchmark_symbol:
+    # Use pre-fetched benchmark if available, otherwise fetch
+    benchmark = group.benchmark
+    if benchmark is None and group.benchmark_symbol:
         benchmark = step_fetch_benchmark(group.benchmark_symbol, group_universe)
         group.benchmark = benchmark
 
@@ -328,9 +309,7 @@ def step_generate_group_memo(
     """Generate memo for a single group. Returns updated GroupRun."""
     import uuid
 
-    effective_shortlist = group_run.ranked_shortlist
-    if mandate.shortlist_top_k is not None:
-        effective_shortlist = group_run.ranked_shortlist[: mandate.shortlist_top_k]
+    effective_shortlist = group_run.ranked_shortlist[: mandate.shortlist_top_k]
 
     group_universe = _build_group_universe(universe, group_run.group)
 

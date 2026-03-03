@@ -210,7 +210,9 @@ class MandateConfig(BaseModel):
             MetricId.MAX_DRAWDOWN: 0.2,
         }
     )
-    shortlist_top_k: int | None = None  # None = include all eligible funds in memo
+    shortlist_top_k: int = 3  # Top N funds included in memo
+    strategy_include: list[str] = Field(default_factory=list)
+    strategy_exclude: list[str] = Field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -351,5 +353,4 @@ class DecisionRun(BaseModel):
     memo: MemoOutput | None = None
     fact_pack: FactPack | None = None
     fund_eligibility: list[FundEligibility] = Field(default_factory=list)
-    grouping_criteria: GroupingCriteria | None = None
     group_runs: list[GroupRun] = Field(default_factory=list)
