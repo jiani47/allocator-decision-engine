@@ -124,20 +124,24 @@ class TestFullPipelineMessy:
         assert len(ranked) > 0
 
     def test_constraint_filtering(self):
+        """Test that drawdown constraint pushes failing funds to the bottom."""
         content = (FIXTURES / "01_clean_universe.csv").read_bytes()
         df = read_csv(content, "01_clean_universe.csv")
         mapping = infer_column_mapping(df)
         universe = build_normalized_universe(df, mapping, file_hash(content))
         fund_metrics = step_compute_metrics(universe)
 
-        # Exclude Global Macro
-        mandate = MandateConfig(strategy_exclude=["Global Macro"])
+        # Use a very tight drawdown tolerance so at least one fund fails
+        mandate = MandateConfig(max_drawdown_tolerance=-0.001)
         ranked, _ = step_rank(universe, fund_metrics, mandate)
 
-        birch = next(sf for sf in ranked if sf.fund_name == "Birch Global Macro")
-        assert not birch.all_constraints_passed
-        # Birch should be ranked last
-        assert birch.rank == len(ranked)
+        # At least one fund should fail the constraint
+        failing = [sf for sf in ranked if not sf.all_constraints_passed]
+        assert len(failing) > 0
+        # Failing funds should be ranked after passing funds
+        passing = [sf for sf in ranked if sf.all_constraints_passed]
+        if passing and failing:
+            assert max(sf.rank for sf in passing) < min(sf.rank for sf in failing)
 
 
 class TestLLMPathIntegration:

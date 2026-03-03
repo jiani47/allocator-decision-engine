@@ -19,6 +19,7 @@ from app.core.schemas import (
     ColumnMapping,
     ScoreComponent,
     ScoredFund,
+    WarningResolution,
 )
 from app.llm.memo_service import generate_memo, validate_claims
 
@@ -213,3 +214,102 @@ class TestClaimValidation:
         errors = validate_claims(memo, _make_fact_pack())
         assert len(errors) == 1
         assert "Nonexistent Fund" in errors[0]
+
+
+class TestShortlistTopK:
+    def test_default_top_k_is_three(self):
+        mandate = MandateConfig()
+        assert mandate.shortlist_top_k == 3
+
+    def test_top_k_set(self):
+        mandate = MandateConfig(shortlist_top_k=2)
+        assert mandate.shortlist_top_k == 2
+
+    def test_top_k_slicing_in_fact_pack(self):
+        """When top_k is applied, only sliced shortlist should appear in fact pack."""
+        shortlist = _make_shortlist()
+        # Add a second fund
+        second = ScoredFund(
+            fund_name="Birch Global Macro",
+            metric_values={
+                MetricId.ANNUALIZED_RETURN: 0.06,
+                MetricId.ANNUALIZED_VOLATILITY: 0.10,
+                MetricId.SHARPE_RATIO: 0.60,
+                MetricId.MAX_DRAWDOWN: -0.08,
+            },
+            score_breakdown=[],
+            composite_score=0.65,
+            rank=2,
+            constraint_results=[],
+            all_constraints_passed=True,
+        )
+        full_shortlist = shortlist + [second]
+
+        # Build fact pack with top_k=1 (slice before building)
+        effective = full_shortlist[:1]
+        fp = build_fact_pack("run-1", effective, _make_universe(), MandateConfig(), "SPY")
+        assert len(fp.shortlist) == 1
+        assert fp.shortlist[0].fund_name == "Atlas L/S Equity"
+
+
+class TestAnalystNotesInPrompt:
+    def test_no_notes_no_section(self):
+        fp = _make_fact_pack()
+        prompt = build_memo_prompt(fp)
+        assert "Analyst Data Quality Notes" not in prompt
+
+    def test_notes_appear_in_prompt(self):
+        notes = [
+            WarningResolution(
+                category="duplicate",
+                fund_name="Atlas L/S Equity",
+                original_message="2 duplicate rows found",
+                action="ignored",
+                analyst_note="Keeping first occurrence",
+            ),
+            WarningResolution(
+                category="outlier",
+                fund_name="Atlas L/S Equity",
+                original_message="Extreme return 45.0% in 2022-07",
+                action="acknowledged",
+                analyst_note="Confirmed with manager",
+            ),
+        ]
+        fp = build_fact_pack(
+            "run-1", _make_shortlist(), _make_universe(),
+            MandateConfig(), "SPY", analyst_notes=notes,
+        )
+        prompt = build_memo_prompt(fp)
+        assert "Analyst Data Quality Notes" in prompt
+        assert "duplicate" in prompt
+        assert "Keeping first occurrence" in prompt
+        assert "Confirmed with manager" in prompt
+
+    def test_fact_pack_analyst_notes_default_empty(self):
+        fp = _make_fact_pack()
+        assert fp.analyst_notes == []
+
+    def test_fact_pack_analyst_notes_stored(self):
+        notes = [
+            WarningResolution(
+                category="missing_month",
+                fund_name="Cedar Credit",
+                original_message="Missing 2022-06",
+                action="ignored",
+                analyst_note="",
+            )
+        ]
+        fp = build_fact_pack(
+            "run-1", _make_shortlist(), _make_universe(),
+            MandateConfig(), "SPY", analyst_notes=notes,
+        )
+        assert len(fp.analyst_notes) == 1
+        assert fp.analyst_notes[0].category == "missing_month"
+
+
+class TestPromptFundCount:
+    def test_prompt_shows_fund_count(self):
+        fp = _make_fact_pack()
+        prompt = build_memo_prompt(fp)
+        assert "1 fund(s)" in prompt
+        assert "ALL 1 fund(s)" in prompt

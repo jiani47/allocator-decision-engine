@@ -43,6 +43,7 @@ def parse_raw_file(
 
     data_rows: list[RawRow] = []
     aggregated_rows: list[RawRow] = []
+    empty_rows: list[RawRow] = []
 
     for i, cells in enumerate(raw_rows):
         if i == header_idx:
@@ -53,17 +54,19 @@ def parse_raw_file(
             data_rows.append(row)
         elif classification == RowClassification.AGGREGATED:
             aggregated_rows.append(row)
-        # EMPTY and HEADER rows are skipped
+        elif classification == RowClassification.EMPTY:
+            empty_rows.append(row)
 
     fhash = compute_file_hash(file_content)
 
     logger.info(
-        "Parsed %s: %d total rows, header at row %d, %d data rows, %d aggregated rows",
+        "Parsed %s: %d total rows, header at row %d, %d data rows, %d aggregated, %d empty",
         filename,
         total_rows,
         header_idx,
         len(data_rows),
         len(aggregated_rows),
+        len(empty_rows),
     )
 
     return RawFileContext(
@@ -73,6 +76,7 @@ def parse_raw_file(
         header_row_index=header_idx,
         data_rows=data_rows,
         aggregated_rows=aggregated_rows,
+        empty_rows=empty_rows,
         total_rows=total_rows,
     )
 

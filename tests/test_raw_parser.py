@@ -148,3 +148,15 @@ class TestParseRawFile:
         ctx = parse_raw_file(csv_content, "test.csv")
         assert len(ctx.aggregated_rows) == 1
         assert ctx.aggregated_rows[0].classification == RowClassification.AGGREGATED
+
+    def test_empty_rows_collected(self):
+        csv_content = b"fund_name,date,return\nFund A,2022-01,0.01\n,,\nFund B,2022-02,0.02\n"
+        ctx = parse_raw_file(csv_content, "test.csv")
+        assert len(ctx.empty_rows) == 1
+        assert ctx.empty_rows[0].classification == RowClassification.EMPTY
+        assert ctx.empty_rows[0].row_index == 2
+
+    def test_empty_rows_default_empty_for_clean_csv(self):
+        content = (FIXTURES / "01_clean_universe.csv").read_bytes()
+        ctx = parse_raw_file(content, "01_clean_universe.csv")
+        assert len(ctx.empty_rows) == 0
