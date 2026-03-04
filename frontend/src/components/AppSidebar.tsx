@@ -57,9 +57,9 @@ export function AppSidebar() {
           )}
         >
           {collapsed ? (
-            <span className="text-lg font-bold text-sidebar-foreground">E</span>
+            <span className="text-lg font-bold text-sidebar-foreground">A</span>
           ) : (
-            <span className="text-lg font-bold text-sidebar-foreground">Equi</span>
+            <span className="text-sm font-semibold text-sidebar-foreground">Allocator Decision OS</span>
           )}
         </div>
 

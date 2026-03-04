@@ -120,9 +120,19 @@
     }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    font-family: 'Karla', system-ui, -apple-system, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    }
+  h1, h3 {
+    font-family: 'PT Serif', serif;
+    @apply font-semibold;
+    letter-spacing: -0.004em;
+    }
+  h2 {
+    font-family: 'Karla', sans-serif;
+    @apply font-semibold;
+    letter-spacing: -0.004em;
     }
 }
 
