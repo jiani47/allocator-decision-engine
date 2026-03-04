@@ -14,8 +14,6 @@ from app.ui.steps import (
     step_upload,
     step_ranking,
     step_memo,
-    step_audit,
-    step_export,
 )
 
 st.set_page_config(
@@ -31,8 +29,6 @@ STEP_RENDERERS = [
     step_upload.render,
     step_ranking.render,
     step_memo.render,
-    step_audit.render,
-    step_export.render,
 ]
 
 STEP_RENDERERS[st.session_state["step"]]()

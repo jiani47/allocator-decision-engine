@@ -112,7 +112,6 @@ Based on the following deterministic evaluation results, draft a structured IC m
 
 ## Evaluation Data
 
-**Run ID:** {fact_pack.run_id}
 **Universe:** {json.dumps(fact_pack.universe_summary)}
 **Benchmark:** {fact_pack.benchmark_symbol}
 **Mandate Configuration:** {json.dumps(mandate_data, default=str)}

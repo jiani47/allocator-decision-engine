@@ -12,7 +12,7 @@ from app.config import Settings
 from app.core.decision_run import create_decision_run
 from app.core.evidence.audit import build_claim_evidence, MetricEvidence
 from app.core.evidence.fact_pack import build_fact_pack
-from app.core.export import export_decision_run_json, export_memo_markdown
+from app.core.export import export_decision_run_json, export_memo_markdown, export_memo_pdf
 from app.core.metrics.compute import compute_all_metrics
 from app.core.schemas import (
     BenchmarkSeries,
@@ -237,6 +237,11 @@ def step_export_markdown(decision_run: DecisionRun) -> str:
 def step_export_json(decision_run: DecisionRun) -> str:
     """Export as JSON."""
     return export_decision_run_json(decision_run)
+
+
+def step_export_pdf(decision_run: DecisionRun) -> bytes:
+    """Export as PDF."""
+    return export_memo_pdf(decision_run)
 
 
 # ---------------------------------------------------------------------------

@@ -5,9 +5,7 @@ STEPS = [
     "Mandate",
     "Upload & Review",
     "Metrics & Ranking",
-    "Memo",
-    "Audit",
-    "Export",
+    "Memo & Export",
 ]
 
 
@@ -36,7 +34,6 @@ def reset_from(step: int) -> None:
             "memo", "fact_pack", "decision_run", "warning_resolutions",
             "groups", "group_runs", "_benchmark", "_benchmark_ticker"],
         2: ["memo", "fact_pack", "decision_run", "group_runs"],
-        3: ["decision_run"],
     }
     for key in keys_by_step.get(step, []):
         st.session_state.pop(key, None)

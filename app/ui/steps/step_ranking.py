@@ -1,9 +1,13 @@
 """Step 2: Metrics & Ranking."""
 import pandas as pd
 import streamlit as st
+from app.config import Settings
 from app.core.exceptions import DecisionEngineError
+from app.core.metrics.returns import annualized_return, annualized_volatility
+from app.core.metrics.risk import max_drawdown, sharpe_ratio
 from app.core.schemas import FundGroup, MetricId
 from app.services import step_fetch_benchmark
+from app.ui.state import go_to
 from app.ui.widgets.metric_format import format_metric
 from app.ui.widgets.navigation import render_nav_buttons
 
@@ -86,6 +90,36 @@ def render() -> None:
 
     st.divider()
 
+    # --- Scoring Weights ---
+    st.subheader("Scoring Weights")
+    wc1, wc2, wc3 = st.columns(3)
+    with wc1:
+        w_ret = st.slider("Annualized Return", 0.0, 1.0, 0.4, 0.05, key="w_ret")
+    with wc2:
+        w_sharpe = st.slider("Sharpe Ratio", 0.0, 1.0, 0.4, 0.05, key="w_sharpe")
+    with wc3:
+        w_dd = st.slider("Max Drawdown penalty", 0.0, 1.0, 0.2, 0.05, key="w_dd")
+
+    total = w_ret + w_sharpe + w_dd
+    if abs(total - 1.0) > 0.01:
+        st.warning(f"Weights sum to {total:.2f}, not 1.0.")
+
+    new_weights: dict[MetricId, float] = {}
+    if w_ret > 0:
+        new_weights[MetricId.ANNUALIZED_RETURN] = w_ret
+    if w_sharpe > 0:
+        new_weights[MetricId.SHARPE_RATIO] = w_sharpe
+    if w_dd > 0:
+        new_weights[MetricId.MAX_DRAWDOWN] = w_dd
+
+    # Apply weights to mandate and re-rank if changed
+    if new_weights != mandate.weights:
+        mandate = mandate.model_copy(update={"weights": new_weights})
+        st.session_state["mandate"] = mandate
+        st.session_state.pop("group_runs", None)
+
+    st.divider()
+
     # --- Ranking computation ---
     if "group_runs" not in st.session_state:
         eligible_names = [e.fund_name for e in eligibility if e.eligible]
@@ -121,7 +155,7 @@ def render() -> None:
     gr = st.session_state["group_runs"][0]
 
     # Metric explanation
-    with st.expander("How are these metrics calculated?"):
+    with st.expander("How are funds ranked?"):
         st.markdown(
             "**Annualized Return:** Geometric mean of monthly growth factors, annualized."
         )
@@ -137,6 +171,26 @@ def render() -> None:
         st.markdown(
             "**Benchmark Correlation:** Pearson correlation over overlapping periods."
         )
+        st.divider()
+        st.markdown("**Ranking Methodology**")
+        st.markdown(
+            "1. **Normalize:** Each metric is min-max scaled to [0, 1] across "
+            "all eligible funds. For max drawdown, the scale is inverted so "
+            "less-negative (better) drawdown scores higher."
+        )
+        st.markdown(
+            "2. **Weight:** Normalized scores are multiplied by the mandate "
+            "weights you configured (visible in each fund's detail breakdown)."
+        )
+        st.markdown(
+            "3. **Score:** The composite score is the weighted sum of "
+            "normalized metrics."
+        )
+        st.markdown(
+            "4. **Rank:** Funds that pass all constraints are ranked above "
+            "those that fail. Within each group, funds are sorted by "
+            "composite score (highest first)."
+        )
 
     # Benchmark info
     if gr.group.benchmark:
@@ -146,6 +200,19 @@ def render() -> None:
             f"Benchmark: **{bm.symbol}** — {len(bm_periods)} months "
             f"({bm_periods[0]} to {bm_periods[-1]})"
         )
+
+        # Benchmark metrics
+        bm_returns = pd.Series([bm.monthly_returns[p] for p in bm_periods])
+        bm_ann_ret = annualized_return(bm_returns)
+        bm_ann_vol = annualized_volatility(bm_returns)
+        bm_sharpe = sharpe_ratio(bm_returns)
+        bm_dd = max_drawdown(bm_returns)
+
+        bm_cols = st.columns(4)
+        bm_cols[0].metric("Ann. Return", f"{bm_ann_ret:.2%}")
+        bm_cols[1].metric("Ann. Volatility", f"{bm_ann_vol:.2%}")
+        bm_cols[2].metric("Sharpe Ratio", f"{bm_sharpe:.2f}")
+        bm_cols[3].metric("Max Drawdown", f"{bm_dd:.2%}")
     elif gr.group.benchmark_symbol:
         st.caption(f"Benchmark: {gr.group.benchmark_symbol} (fetch failed)")
     else:
@@ -195,4 +262,33 @@ def render() -> None:
                     icon = "+" if cr.passed else "x"
                     st.write(f"[{icon}] {cr.explanation}")
 
-    render_nav_buttons(back_step=1, forward_step=3, key_prefix="ranking")
+    # Generate Memo + Navigation
+    st.divider()
+    col_back, _, col_memo = st.columns([1, 1, 1])
+    with col_back:
+        if st.button("Go back", key="ranking_back"):
+            from app.ui.state import reset_from
+            reset_from(1)
+            go_to(1)
+            st.rerun()
+    with col_memo:
+        if st.button("Generate Memo", type="primary", key="gen_memo"):
+            try:
+                from app.services import step_generate_group_memo
+
+                settings = Settings()
+                with st.spinner("Generating memo..."):
+                    updated_gr = step_generate_group_memo(
+                        gr,
+                        st.session_state["universe"],
+                        st.session_state["mandate"],
+                        settings,
+                        warning_resolutions=st.session_state.get(
+                            "warning_resolutions"
+                        ),
+                    )
+                st.session_state["group_runs"] = [updated_gr]
+                go_to(3)
+                st.rerun()
+            except DecisionEngineError as e:
+                st.error(f"Memo generation failed: {e}")

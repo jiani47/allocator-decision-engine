@@ -38,14 +38,21 @@ def render_warning_panel(
                 if is_dismissed:
                     if st.button("Restore", key=f"restore_warning_{idx}"):
                         st.session_state["dismissed_warnings"].discard(idx)
+                        if f"warning_note_{idx}" in st.session_state:
+                            del st.session_state[f"warning_note_{idx}"]
                         st.rerun()
                 else:
                     if st.button("Ignore", key=f"ignore_warning_{idx}"):
                         st.session_state["dismissed_warnings"].add(idx)
                         st.rerun()
             with wcol2:
-                st.text_input(
-                    "Analyst note (optional)",
-                    key=f"warning_note_{idx}",
-                    placeholder="e.g., Confirmed with manager, keeping as-is",
-                )
+                note_key = f"warning_note_{idx}"
+                if st.session_state.get(note_key):
+                    st.text_input(
+                        "Analyst note",
+                        key=note_key,
+                    )
+                else:
+                    if st.button("Resolve with Note", key=f"resolve_note_{idx}"):
+                        st.session_state[note_key] = " "
+                        st.rerun()

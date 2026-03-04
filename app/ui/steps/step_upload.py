@@ -3,11 +3,10 @@ import streamlit as st
 from app.config import Settings
 from app.core.exceptions import DecisionEngineError
 from app.core.schemas import WarningResolution
-from app.ui.state import go_to, reset_from
+from app.ui.state import reset_from
 from app.ui.widgets.alert_block import render_alerts
 from app.ui.widgets.navigation import render_nav_buttons
 from app.ui.widgets.fund_details import render_eligible_table
-from app.ui.widgets.fund_table import render_fund_table
 from app.ui.widgets.warning_panel import render_warning_panel
 
 
@@ -24,14 +23,25 @@ def _process_file(content: bytes, filename: str) -> None:
     settings = Settings()
     mandate = st.session_state["mandate"]
 
-    with st.spinner("Processing file..."):
+    with st.status("Processing file...", expanded=True) as status:
+        status.update(label="Parsing raw file...")
         raw_context = step_parse_raw(content, filename, max_rows=settings.ingestion_max_rows)
+
+        status.update(label="Extracting fund data with LLM...")
         llm_result, validation_errors = step_llm_extract(raw_context, settings)
+
+        status.update(label="Normalizing fund universe...")
         universe = step_normalize_from_llm(llm_result, raw_context)
+
+        status.update(label="Computing metrics...")
         fund_metrics = step_compute_metrics(
             universe, None, mandate.min_history_months
         )
+
+        status.update(label="Classifying eligibility...")
         eligibility = step_classify_eligibility(universe, fund_metrics, mandate)
+
+        status.update(label="Processing complete", state="complete", expanded=False)
 
     st.session_state["uploaded_content"] = content
     st.session_state["uploaded_name"] = filename
@@ -55,18 +65,8 @@ def _render_review() -> None:
     if "dismissed_warnings" not in st.session_state:
         st.session_state["dismissed_warnings"] = set()
 
-    # Summary
-    eligible_count = sum(1 for e in eligibility if e.eligible)
-    ineligible_count = len(eligibility) - eligible_count
-    st.success(
-        f"Processed {len(universe.funds)} funds: "
-        f"{eligible_count} eligible, {ineligible_count} ineligible"
-    )
-
     # Alerts
     render_alerts(
-        notes=llm_result.interpretation_notes,
-        ambiguities=llm_result.ambiguities if llm_result.ambiguities else None,
         errors=validation_errors if validation_errors else None,
     )
 
@@ -108,42 +108,6 @@ def _render_review() -> None:
             with st.expander(f"{e.fund_name} — INELIGIBLE"):
                 for reason in reasons:
                     st.write(f"- {reason}")
-
-    # Re-extract option
-    correction = st.text_area(
-        "Corrections or instructions for re-extraction (optional)",
-        placeholder="e.g., 'The returns are already in decimal format, not percentages'",
-        key="llm_correction",
-    )
-    if st.button("Re-extract with LLM", key="upload_reextract"):
-        try:
-            from app.services import (
-                step_classify_eligibility,
-                step_compute_metrics,
-                step_llm_extract,
-                step_normalize_from_llm,
-            )
-
-            settings = Settings()
-            mandate = st.session_state["mandate"]
-            with st.spinner("Re-extracting..."):
-                result, errors = step_llm_extract(raw_context, settings)
-                universe_new = step_normalize_from_llm(result, raw_context)
-                metrics_new = step_compute_metrics(
-                    universe_new, None, mandate.min_history_months
-                )
-                elig_new = step_classify_eligibility(
-                    universe_new, metrics_new, mandate
-                )
-
-            st.session_state["llm_result"] = result
-            st.session_state["llm_validation_errors"] = errors
-            st.session_state["universe"] = universe_new
-            st.session_state["fund_metrics"] = metrics_new
-            st.session_state["eligibility"] = elig_new
-            st.rerun()
-        except DecisionEngineError as e:
-            st.error(f"Re-extraction failed: {e}")
 
     # Navigation
     def _save_warning_resolutions() -> None:

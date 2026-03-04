@@ -202,6 +202,8 @@ class MandateConfig(BaseModel):
     min_liquidity_days: int | None = None
     max_drawdown_tolerance: float | None = None  # e.g., -0.20 for 20% max DD
     target_volatility: float | None = None
+    min_annualized_return: float | None = None  # e.g., 0.05 for 5%
+    min_sharpe_ratio: float | None = None  # e.g., 0.5
     min_history_months: int = 12
     weights: dict[MetricId, float] = Field(
         default_factory=lambda: {

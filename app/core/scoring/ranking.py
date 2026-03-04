@@ -7,6 +7,8 @@ import logging
 from app.core.constraints.base import BaseConstraint
 from app.core.constraints.drawdown import MaxDrawdownConstraint
 from app.core.constraints.liquidity import MinLiquidityConstraint
+from app.core.constraints.min_return import MinReturnConstraint
+from app.core.constraints.min_sharpe import MinSharpeConstraint
 from app.core.constraints.strategy import StrategyConstraint
 from app.core.constraints.volatility import TargetVolatilityConstraint
 from app.core.schemas import (
@@ -37,6 +39,12 @@ def build_constraints(mandate: MandateConfig) -> list[BaseConstraint]:
 
     if mandate.target_volatility is not None:
         constraints.append(TargetVolatilityConstraint(mandate.target_volatility))
+
+    if mandate.min_annualized_return is not None:
+        constraints.append(MinReturnConstraint(mandate.min_annualized_return))
+
+    if mandate.min_sharpe_ratio is not None:
+        constraints.append(MinSharpeConstraint(mandate.min_sharpe_ratio))
 
     if mandate.strategy_include or mandate.strategy_exclude:
         constraints.append(
