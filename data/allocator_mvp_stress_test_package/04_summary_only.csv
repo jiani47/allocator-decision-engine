@@ -1,0 +1,4 @@
+fund_name,1y_return,3y_return,vol,max_dd,liquidity_days,strategy
+Atlas L/S,0.12,0.34,0.18,-0.14,30,Long/Short Equity
+Borealis Macro,0.08,0.22,0.12,-0.1,45,Global Macro
+Cedar Credit,0.07,0.2,0.08,-0.06,90,Private Credit
