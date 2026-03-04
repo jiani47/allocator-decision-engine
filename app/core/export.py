@@ -153,23 +153,26 @@ def export_memo_markdown(decision_run: DecisionRun) -> str:
 def export_memo_pdf(decision_run: DecisionRun) -> bytes:
     """Export the memo + metadata as a PDF document."""
     md = export_memo_markdown(decision_run)
+    return render_markdown_to_pdf(md)
 
+
+def render_markdown_to_pdf(md: str) -> bytes:
+    """Render a markdown string to PDF bytes."""
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=20)
     pdf.add_page()
-
-    # Title
-    pdf.set_font("Helvetica", "B", 16)
-    pdf.cell(0, 10, _ascii_safe(f"IC Memo - Decision Run {decision_run.run_id[:8]}"), new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(4)
 
     pdf.set_font("Helvetica", "", 9)
     for line in md.split("\n"):
         # Reset cursor to left margin before each line
         pdf.set_x(pdf.l_margin)
 
-        # Skip the top-level title (already rendered)
-        if line.startswith("# "):
+        # Top-level title
+        if line.startswith("# ") and not line.startswith("## "):
+            pdf.set_font("Helvetica", "B", 16)
+            pdf.cell(0, 10, _ascii_safe(line.lstrip("# ")), new_x="LMARGIN", new_y="NEXT")
+            pdf.ln(4)
+            pdf.set_font("Helvetica", "", 9)
             continue
 
         # Section headers

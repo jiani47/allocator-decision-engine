@@ -16,7 +16,6 @@ export function MemoExport() {
     universe,
     rawContext,
     eligibility,
-    fundMetrics,
     benchmarkMetrics,
     memoStreaming,
     streamingMemoText,
@@ -59,7 +58,7 @@ export function MemoExport() {
   const handleExportPdf = async () => {
     setExporting(true)
     try {
-      const blob = await exportPdf(universe!, mandate!, eligibility, groupRuns, fundMetrics)
+      const blob = await exportPdf(memoContent)
       const url = URL.createObjectURL(blob)
       const a = document.createElement("a")
       a.href = url

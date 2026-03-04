@@ -151,23 +151,11 @@ export async function* streamMemo(
   }
 }
 
-export async function exportPdf(
-  universe: NormalizedUniverse,
-  mandate: MandateConfig,
-  eligibility: FundEligibility[],
-  groupRuns: GroupRun[],
-  fundMetrics: FundMetrics[],
-): Promise<Blob> {
+export async function exportPdf(markdown: string): Promise<Blob> {
   const resp = await fetch("/api/export/pdf", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      universe,
-      mandate,
-      eligibility,
-      group_runs: groupRuns,
-      fund_metrics: fundMetrics,
-    }),
+    body: JSON.stringify({ markdown }),
   })
   if (!resp.ok) {
     const text = await resp.text()

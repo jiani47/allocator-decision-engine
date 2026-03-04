@@ -25,8 +25,6 @@ from app.core.schemas import FundGroup, MandateConfig
 from app.services import (
     step_classify_eligibility,
     step_compute_metrics,
-    step_create_run,
-    step_export_pdf,
     step_fetch_benchmark,
     step_llm_extract,
     step_normalize_from_llm,
@@ -139,21 +137,15 @@ def memo_stream(request: MemoStreamRequest) -> StreamingResponse:
 
 @router.post("/export/pdf")
 def export_pdf(request: ExportPdfRequest) -> Response:
-    """Export decision run as PDF."""
-    decision_run = step_create_run(
-        universe=request.universe,
-        mandate=request.mandate,
-        fund_eligibility=request.eligibility,
-        group_runs=request.group_runs,
-        all_fund_metrics=request.fund_metrics,
-    )
+    """Export memo markdown as PDF."""
+    from app.core.export import render_markdown_to_pdf
 
-    pdf_bytes = step_export_pdf(decision_run)
+    pdf_bytes = render_markdown_to_pdf(request.markdown)
 
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
         headers={
-            "Content-Disposition": f"attachment; filename=equi_memo_{decision_run.run_id[:8]}.pdf"
+            "Content-Disposition": "attachment; filename=equi_memo.pdf"
         },
     )

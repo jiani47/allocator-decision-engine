@@ -98,8 +98,4 @@ class MemoStreamRequest(BaseModel):
 class ExportPdfRequest(BaseModel):
     """Request body for POST /api/export/pdf."""
 
-    universe: NormalizedUniverse
-    mandate: MandateConfig
-    eligibility: list[FundEligibility] = Field(default_factory=list)
-    group_runs: list[GroupRun] = Field(default_factory=list)
-    fund_metrics: list[FundMetrics] = Field(default_factory=list)
+    markdown: str
