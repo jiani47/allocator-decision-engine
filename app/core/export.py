@@ -19,6 +19,22 @@ _ASCII_REPLACEMENTS = {
     "\u2019": "'",  # right single quote
     "\u201c": '"',  # left double quote
     "\u201d": '"',  # right double quote
+    "\u2713": "[x]",  # check mark
+    "\u2714": "[x]",  # heavy check mark
+    "\u2715": "[ ]",  # multiplication x
+    "\u2716": "[ ]",  # heavy multiplication x
+    "\u2717": "[ ]",  # ballot x
+    "\u2718": "[ ]",  # heavy ballot x
+    "\u2610": "[ ]",  # ballot box
+    "\u2611": "[x]",  # ballot box with check
+    "\u2612": "[x]",  # ballot box with x
+    "\u2705": "[x]",  # white heavy check mark emoji
+    "\u274c": "[ ]",  # cross mark emoji
+    "\u274e": "[ ]",  # cross mark button emoji
+    "\u2192": "->",  # rightwards arrow
+    "\u2190": "<-",  # leftwards arrow
+    "\u00b7": "-",  # middle dot
+    "\u2026": "...",  # ellipsis
 }
 
 
@@ -26,7 +42,8 @@ def _ascii_safe(text: str) -> str:
     """Replace Unicode chars unsupported by Helvetica with ASCII equivalents."""
     for u, a in _ASCII_REPLACEMENTS.items():
         text = text.replace(u, a)
-    return "".join(c if ord(c) < 128 else "?" for c in text)
+    # Strip remaining non-ASCII characters (emojis, symbols) instead of '?'
+    return "".join(c if ord(c) < 128 else "" for c in text)
 
 
 def export_memo_markdown(decision_run: DecisionRun) -> str:
@@ -219,11 +236,24 @@ def render_markdown_to_pdf(md: str) -> bytes:
             pdf.ln(3)
             continue
 
-        # Bold lines (**text**)
+        # Mixed bold + normal text (e.g. **Label:** some text)
         stripped = line.strip()
-        if stripped.startswith("**") and "**" in stripped[2:]:
+        if stripped.startswith("**") and "**" in stripped[2:] and not stripped.endswith("**"):
+            # Render bold prefix then normal suffix
+            bold_end = stripped.index("**", 2) + 2
+            bold_part = _ascii_safe(stripped[2:bold_end - 2])
+            normal_part = _ascii_safe(stripped[bold_end:].replace("**", ""))
             pdf.set_font("Helvetica", "B", 9)
-            pdf.multi_cell(0, 5, _ascii_safe(stripped.replace("**", "")))
+            bold_w = pdf.get_string_width(bold_part) + 1
+            pdf.cell(bold_w, 5, bold_part)
+            pdf.set_font("Helvetica", "", 9)
+            pdf.multi_cell(0, 5, normal_part)
+            continue
+
+        # Fully bold lines (**text**)
+        if stripped.startswith("**") and stripped.endswith("**"):
+            pdf.set_font("Helvetica", "B", 9)
+            pdf.multi_cell(0, 5, _ascii_safe(stripped[2:-2]))
             pdf.set_font("Helvetica", "", 9)
             continue
 
