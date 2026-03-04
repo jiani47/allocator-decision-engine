@@ -8,7 +8,12 @@ from collections.abc import Generator
 
 from pydantic import ValidationError
 
-from app.core.evidence.fact_pack import MEMO_SYSTEM_PROMPT, build_memo_prompt
+from app.core.evidence.fact_pack import (
+    CLAIMS_SYSTEM_PROMPT,
+    MEMO_SYSTEM_PROMPT,
+    build_claims_prompt,
+    build_memo_prompt,
+)
 from app.core.exceptions import MemoGenerationError
 from app.core.schemas import Claim, FactPack, MemoOutput, MetricId
 from app.llm.anthropic_client import AnthropicClient
@@ -50,13 +55,18 @@ def generate_memo(client: AnthropicClient, fact_pack: FactPack) -> MemoOutput:
 def generate_memo_streaming(
     client: AnthropicClient, fact_pack: FactPack
 ) -> Generator[tuple[str, str | MemoOutput], None, None]:
-    """Stream memo generation, yielding events.
+    """Two-phase streaming memo generation.
+
+    Phase 1: Stream memo markdown text directly (text_delta events).
+    Phase 2: Extract claims via a non-streaming call.
 
     Yields:
-        ("text_delta", str) — per-token text delta
-        ("complete", MemoOutput) — final validated memo
+        ("text_delta", str) — per-token markdown text delta
+        ("memo_text_complete", str) — full memo text, signals start of claims extraction
+        ("complete", MemoOutput) — final validated memo with claims
         ("error", str) — error message
     """
+    # Phase 1: Stream memo markdown
     prompt = build_memo_prompt(fact_pack)
     accumulated = ""
 
@@ -68,8 +78,21 @@ def generate_memo_streaming(
         yield ("error", f"LLM streaming failed: {e}")
         return
 
-    # Parse the accumulated text
-    text = accumulated.strip()
+    memo_text = accumulated.strip()
+    yield ("memo_text_complete", memo_text)
+
+    # Phase 2: Extract claims (non-streaming)
+    claims_prompt = build_claims_prompt(memo_text, fact_pack)
+    try:
+        raw_claims = client.generate(claims_prompt, CLAIMS_SYSTEM_PROMPT)
+    except Exception as e:
+        # Claims extraction failed — still return the memo without claims
+        logger.warning("Claims extraction failed: %s", e)
+        yield ("complete", MemoOutput(memo_text=memo_text, claims=[]))
+        return
+
+    # Parse claims JSON
+    text = raw_claims.strip()
     if text.startswith("```"):
         text = text.split("\n", 1)[1] if "\n" in text else text[3:]
     if text.endswith("```"):
@@ -79,15 +102,18 @@ def generate_memo_streaming(
     try:
         data = json.loads(text)
     except json.JSONDecodeError as e:
-        yield ("error", f"LLM returned invalid JSON: {e}")
+        logger.warning("Claims JSON parse failed: %s", e)
+        yield ("complete", MemoOutput(memo_text=memo_text, claims=[]))
         return
 
     try:
-        memo = MemoOutput.model_validate(data)
+        claims = [Claim.model_validate(c) for c in data.get("claims", [])]
     except ValidationError as e:
-        yield ("error", f"LLM output failed schema validation: {e}")
+        logger.warning("Claims validation failed: %s", e)
+        yield ("complete", MemoOutput(memo_text=memo_text, claims=[]))
         return
 
+    memo = MemoOutput(memo_text=memo_text, claims=claims)
     errors = validate_claims(memo, fact_pack)
     if errors:
         logger.warning("Claim validation warnings: %s", errors)

@@ -1,10 +1,12 @@
 """FastAPI application factory."""
 
 import logging
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
 from app.api.router import router
 
@@ -36,6 +38,14 @@ def create_app() -> FastAPI:
         )
 
     application.include_router(router, prefix="/api")
+
+    static_dir = Path(__file__).resolve().parent.parent.parent / "static"
+    if static_dir.exists():
+        application.mount(
+            "/",
+            StaticFiles(directory=str(static_dir), html=True),
+            name="static",
+        )
 
     return application
 

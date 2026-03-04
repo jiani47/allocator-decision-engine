@@ -54,6 +54,8 @@ def memo_stream_sse(
         for event_type, payload in generate_memo_streaming(client, fact_pack):
             if event_type == "text_delta":
                 yield _sse_event("text_delta", {"text": payload})
+            elif event_type == "memo_text_complete":
+                yield _sse_event("progress", {"message": "Extracting claims..."})
             elif event_type == "complete":
                 memo: MemoOutput = payload  # type: ignore[assignment]
                 group_run.memo = memo

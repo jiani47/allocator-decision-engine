@@ -51,7 +51,7 @@ function DataTable({ rows, columns }: { rows: CalcRow[]; columns: string[] }) {
   )
 }
 
-export function CalcSheet({ fund, metricId, fundMetrics, rawContext, benchmark }: CalcSheetProps) {
+export function CalcSheet({ fund, metricId, fundMetrics, rawContext: _rawContext, benchmark }: CalcSheetProps) {
   if (metricId === "annualized_return") {
     const result = computeAnnualizedReturn(fund.monthly_returns)
     return (
@@ -61,7 +61,6 @@ export function CalcSheet({ fund, metricId, fundMetrics, rawContext, benchmark }
           columns={["period", "Monthly Return", "1 + r", "Cumulative Product"]}
         />
         <p className="text-xs text-muted-foreground mt-2">{result.summary}</p>
-        <SourceData fund={fund} rawContext={rawContext} />
       </div>
     )
   }
@@ -75,7 +74,6 @@ export function CalcSheet({ fund, metricId, fundMetrics, rawContext, benchmark }
           columns={["period", "Monthly Return", "Deviation from Mean", "Squared Deviation"]}
         />
         <p className="text-xs text-muted-foreground mt-2">{result.summary}</p>
-        <SourceData fund={fund} rawContext={rawContext} />
       </div>
     )
   }
@@ -96,7 +94,6 @@ export function CalcSheet({ fund, metricId, fundMetrics, rawContext, benchmark }
           columns={["period", "Monthly Return", "Cumulative Wealth", "Running Max", "Drawdown"]}
         />
         <p className="text-xs text-muted-foreground mt-2">{result.summary}</p>
-        <SourceData fund={fund} rawContext={rawContext} />
       </div>
     )
   }
@@ -123,7 +120,7 @@ export function CalcSheet({ fund, metricId, fundMetrics, rawContext, benchmark }
   return <p className="text-sm text-muted-foreground">No calculation sheet available for {metricId}.</p>
 }
 
-function SourceData({ fund, rawContext }: { fund: NormalizedFund; rawContext: RawFileContext | null }) {
+export function SourceData({ fund, rawContext }: { fund: NormalizedFund; rawContext: RawFileContext | null }) {
   if (!rawContext || !fund.source_row_indices.length) return null
 
   const rowLookup: Record<number, (string | null)[]> = {}

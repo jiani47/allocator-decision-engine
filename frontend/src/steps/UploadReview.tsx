@@ -264,36 +264,50 @@ export function UploadReview() {
                   return (
                     <Card key={idx} className={isDismissed ? "opacity-50" : ""}>
                       <CardContent className="py-3">
-                        <div className="flex items-start gap-2 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
                           {w.fund_name && (
                             <Badge>{w.fund_name}</Badge>
                           )}
                           <Badge variant={isDismissed ? "secondary" : "outline"}>
                             {formatCategory(w.category)}
                           </Badge>
-                        </div>
-                        <p className="mt-2 text-sm">{w.message}</p>
-                        <div className="mt-3 flex justify-end gap-2">
-                          {!isDismissed && w.fund_name && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="text-destructive"
-                              onClick={() => handleExcludeFund(w.fund_name!)}
-                            >
-                              Exclude Fund
-                            </Button>
+                          {isDismissed && (
+                            <>
+                              <span className="flex-1" />
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleRestore(idx)}
+                              >
+                                Restore
+                              </Button>
+                            </>
                           )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() =>
-                              isDismissed ? handleRestore(idx) : handleDismiss(idx)
-                            }
-                          >
-                            {isDismissed ? "Restore" : "Dismiss"}
-                          </Button>
                         </div>
+                        {!isDismissed && (
+                          <>
+                            <p className="mt-2 text-sm">{w.message}</p>
+                            <div className="mt-3 flex justify-end gap-2">
+                              {w.fund_name && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="text-destructive"
+                                  onClick={() => handleExcludeFund(w.fund_name!)}
+                                >
+                                  Exclude Fund
+                                </Button>
+                              )}
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => handleDismiss(idx)}
+                              >
+                                Dismiss
+                              </Button>
+                            </div>
+                          </>
+                        )}
                       </CardContent>
                     </Card>
                   )
