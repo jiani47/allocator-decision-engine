@@ -1,12 +1,12 @@
 import { WizardProvider } from "@/context/WizardContext"
-import { WizardShell } from "@/components/WizardShell"
+import { AppLayout } from "@/components/AppLayout"
 import { ErrorBoundary } from "@/components/ErrorBoundary"
 
 export default function App() {
   return (
     <ErrorBoundary>
       <WizardProvider>
-        <WizardShell />
+        <AppLayout />
       </WizardProvider>
     </ErrorBoundary>
   )

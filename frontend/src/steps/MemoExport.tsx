@@ -1,5 +1,6 @@
 import { useWizard, type MetricId } from "@/context/WizardContext"
 import { exportPdf } from "@/api/client"
+import { PageHeader } from "@/components/PageHeader"
 import { CalcSheet } from "@/components/CalcSheet"
 import Markdown from "react-markdown"
 import { Button } from "@/components/ui/button"
@@ -64,7 +65,10 @@ export function MemoExport() {
 
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-4">IC Memo & Export</h2>
+      <PageHeader
+        title="IC Memo & Export"
+        description="Review the generated memo, audit claims, and export."
+      />
 
       {/* Memo text */}
       <div className="prose prose-sm max-w-none mb-8">

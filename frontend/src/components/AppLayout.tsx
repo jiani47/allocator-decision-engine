@@ -1,5 +1,5 @@
 import { useWizard } from "@/context/WizardContext"
-import { StepIndicator } from "@/components/StepIndicator"
+import { AppSidebar } from "@/components/AppSidebar"
 import { MandateForm } from "@/steps/MandateForm"
 import { UploadReview } from "@/steps/UploadReview"
 import { RankingView } from "@/steps/RankingView"
@@ -7,16 +7,18 @@ import { MemoExport } from "@/steps/MemoExport"
 
 const STEP_COMPONENTS = [MandateForm, UploadReview, RankingView, MemoExport]
 
-export function WizardShell() {
+export function AppLayout() {
   const { step } = useWizard()
   const StepComponent = STEP_COMPONENTS[step]
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="mx-auto max-w-5xl px-4 py-8">
-        <StepIndicator />
-        <StepComponent />
-      </div>
+    <div className="grid h-screen grid-cols-[auto_1fr] overflow-hidden">
+      <AppSidebar />
+      <main className="overflow-y-auto scrollbar-thin">
+        <div className="mx-auto max-w-5xl px-8 py-8 animate-fade-in-up" key={step}>
+          <StepComponent />
+        </div>
+      </main>
     </div>
   )
 }

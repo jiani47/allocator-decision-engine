@@ -1,5 +1,6 @@
 import { useEffect, useState, useCallback } from "react"
 import { useWizard, type MetricId } from "@/context/WizardContext"
+import { PageHeader } from "@/components/PageHeader"
 import { useBenchmark } from "@/hooks/useBenchmark"
 import { useRank } from "@/hooks/useRank"
 import { useMemoStream } from "@/hooks/useMemoStream"
@@ -105,7 +106,10 @@ export function RankingView() {
 
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-4">Metrics & Ranking</h2>
+      <PageHeader
+        title="Metrics & Ranking"
+        description="Configure benchmark, scoring weights, and generate rankings."
+      />
 
       {/* Benchmark config */}
       <h3 className="text-lg font-medium mb-2">Benchmark</h3>

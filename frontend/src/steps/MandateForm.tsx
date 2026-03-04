@@ -1,5 +1,6 @@
 import { useState } from "react"
 import { useWizard, DEFAULT_MANDATE, type MandateConfig } from "@/context/WizardContext"
+import { PageHeader } from "@/components/PageHeader"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
@@ -51,13 +52,10 @@ export function MandateForm() {
 
   return (
     <div>
-      <h1 className="text-3xl font-bold mb-1">Equi</h1>
-      <p className="text-muted-foreground mb-6">
-        Turn messy manager data into normalized, validated, and defendable investment decisions.
-      </p>
-
-      <h2 className="text-xl font-semibold mb-4">Define Your Mandate</h2>
-      <p className="text-sm text-muted-foreground mb-6">Set your hard constraints before uploading data.</p>
+      <PageHeader
+        title="Define Your Mandate"
+        description="Set your hard constraints before uploading data."
+      />
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         {/* Risk Constraints */}

@@ -1,6 +1,7 @@
 import { useCallback, useRef, useState } from "react"
 import { useWizard, type WarningResolution } from "@/context/WizardContext"
 import { useUpload } from "@/hooks/useUpload"
+import { PageHeader } from "@/components/PageHeader"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -80,7 +81,10 @@ export function UploadReview() {
 
   return (
     <div>
-      <h2 className="text-xl font-semibold mb-4">Upload & Review</h2>
+      <PageHeader
+        title="Upload & Review"
+        description="Upload your CSV file and review the parsed fund universe."
+      />
 
       {/* File upload */}
       <Card className="mb-6">

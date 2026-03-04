@@ -222,6 +222,7 @@ export const STEPS = [
 
 interface WizardState {
   step: number
+  highestStepReached: number
   mandate: MandateConfig | null
   uploadedFileName: string | null
 
@@ -265,6 +266,7 @@ interface WizardActions {
   setWarningResolutions: (resolutions: WarningResolution[]) => void
   setSelectedClaimIdx: (idx: number) => void
   resetFrom: (step: number) => void
+  canNavigateTo: (targetStep: number) => boolean
 }
 
 type WizardContextType = WizardState & WizardActions
@@ -294,6 +296,7 @@ const DEFAULT_MANDATE: MandateConfig = {
 function initialState(): WizardState {
   return {
     step: 0,
+    highestStepReached: 0,
     mandate: null,
     uploadedFileName: null,
     rawContext: null,
@@ -340,11 +343,22 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const setStep = useCallback(
-    (step: number) => setState((prev) => ({ ...prev, step })),
+    (step: number) => setState((prev) => ({
+      ...prev,
+      step,
+      highestStepReached: Math.max(prev.highestStepReached, step),
+    })),
     [],
   )
   const goForward = useCallback(
-    () => setState((prev) => ({ ...prev, step: Math.min(prev.step + 1, STEPS.length - 1) })),
+    () => setState((prev) => {
+      const newStep = Math.min(prev.step + 1, STEPS.length - 1)
+      return {
+        ...prev,
+        step: newStep,
+        highestStepReached: Math.max(prev.highestStepReached, newStep),
+      }
+    }),
     [],
   )
   const goBack = useCallback(() => {
@@ -441,6 +455,10 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     (idx: number) => setState((prev) => ({ ...prev, selectedClaimIdx: idx })),
     [],
   )
+  const canNavigateTo = useCallback(
+    (targetStep: number) => targetStep <= state.highestStepReached,
+    [state.highestStepReached],
+  )
 
   const value = useMemo<WizardContextType>(
     () => ({
@@ -458,6 +476,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       setWarningResolutions,
       setSelectedClaimIdx,
       resetFrom,
+      canNavigateTo,
     }),
     [
       state,
@@ -474,6 +493,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       setWarningResolutions,
       setSelectedClaimIdx,
       resetFrom,
+      canNavigateTo,
     ],
   )
 
