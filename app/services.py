@@ -249,7 +249,7 @@ def step_export_pdf(decision_run: DecisionRun) -> bytes:
 # ---------------------------------------------------------------------------
 
 
-def _build_group_universe(
+def build_group_universe(
     universe: NormalizedUniverse, group: FundGroup
 ) -> NormalizedUniverse:
     """Construct a sub-universe containing only the group's funds."""
@@ -280,7 +280,7 @@ def step_rank_group(
     Fetches group benchmark, computes metrics, ranks.
     Returns a GroupRun with populated metrics and ranking.
     """
-    group_universe = _build_group_universe(universe, group)
+    group_universe = build_group_universe(universe, group)
 
     # Use pre-fetched benchmark if available, otherwise fetch
     benchmark = group.benchmark

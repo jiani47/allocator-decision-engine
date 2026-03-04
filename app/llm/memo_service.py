@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Generator
 
 from pydantic import ValidationError
 
@@ -44,6 +45,54 @@ def generate_memo(client: AnthropicClient, fact_pack: FactPack) -> MemoOutput:
         logger.warning("Claim validation warnings: %s", errors)
 
     return memo
+
+
+def generate_memo_streaming(
+    client: AnthropicClient, fact_pack: FactPack
+) -> Generator[tuple[str, str | MemoOutput], None, None]:
+    """Stream memo generation, yielding events.
+
+    Yields:
+        ("text_delta", str) — per-token text delta
+        ("complete", MemoOutput) — final validated memo
+        ("error", str) — error message
+    """
+    prompt = build_memo_prompt(fact_pack)
+    accumulated = ""
+
+    try:
+        for chunk in client.generate_stream(prompt, MEMO_SYSTEM_PROMPT):
+            accumulated += chunk
+            yield ("text_delta", chunk)
+    except Exception as e:
+        yield ("error", f"LLM streaming failed: {e}")
+        return
+
+    # Parse the accumulated text
+    text = accumulated.strip()
+    if text.startswith("```"):
+        text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+    if text.endswith("```"):
+        text = text[:-3]
+    text = text.strip()
+
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError as e:
+        yield ("error", f"LLM returned invalid JSON: {e}")
+        return
+
+    try:
+        memo = MemoOutput.model_validate(data)
+    except ValidationError as e:
+        yield ("error", f"LLM output failed schema validation: {e}")
+        return
+
+    errors = validate_claims(memo, fact_pack)
+    if errors:
+        logger.warning("Claim validation warnings: %s", errors)
+
+    yield ("complete", memo)
 
 
 def validate_claims(memo: MemoOutput, fact_pack: FactPack) -> list[str]:

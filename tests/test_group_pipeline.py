@@ -13,7 +13,7 @@ from app.core.schemas import (
     NormalizedUniverse,
     ValidationWarning,
 )
-from app.services import _build_group_universe, step_rank_group
+from app.services import build_group_universe, step_rank_group
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +81,7 @@ def _make_groups() -> tuple[FundGroup, FundGroup]:
 
 
 # ---------------------------------------------------------------------------
-# Tests: _build_group_universe
+# Tests: build_group_universe
 # ---------------------------------------------------------------------------
 
 
@@ -97,7 +97,7 @@ class TestBuildGroupUniverse:
         universe = _make_universe(funds)
         group_eq, _ = _make_groups()
 
-        sub = _build_group_universe(universe, group_eq)
+        sub = build_group_universe(universe, group_eq)
 
         assert len(sub.funds) == 2
         names = {f.fund_name for f in sub.funds}
@@ -114,7 +114,7 @@ class TestBuildGroupUniverse:
         universe = _make_universe(funds)
         group_eq, _ = _make_groups()
 
-        sub = _build_group_universe(universe, group_eq)
+        sub = build_group_universe(universe, group_eq)
 
         # Should include: the Alpha Equity warning + the global (fund_name=None) warning
         assert len(sub.warnings) == 2
@@ -146,7 +146,7 @@ class TestBuildGroupUniverse:
             fund_names=["Alpha Equity"],
         )
 
-        sub = _build_group_universe(universe, group)
+        sub = build_group_universe(universe, group)
 
         assert len(sub.warnings) == 0
 
@@ -159,7 +159,7 @@ class TestBuildGroupUniverse:
         universe = _make_universe(funds)
         group_eq, _ = _make_groups()
 
-        sub = _build_group_universe(universe, group_eq)
+        sub = build_group_universe(universe, group_eq)
 
         assert sub.source_file_hash == universe.source_file_hash
         assert sub.normalization_timestamp == universe.normalization_timestamp

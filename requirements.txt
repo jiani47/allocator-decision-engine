@@ -12,3 +12,4 @@ tenacity>=9.0.0
 yfinance>=0.2.0
 openpyxl>=3.1.0
 fpdf2>=2.8.0
+python-multipart>=0.0.9

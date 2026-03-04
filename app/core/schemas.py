@@ -141,7 +141,7 @@ class MetricResult(BaseModel):
     """Single metric computation result with formula and lineage."""
 
     metric_id: MetricId
-    value: float
+    value: float | None = None
     period_start: str
     period_end: str
     formula_text: str
@@ -226,7 +226,7 @@ class ScoreComponent(BaseModel):
     """Breakdown of one metric's contribution to the composite score."""
 
     metric_id: MetricId
-    raw_value: float
+    raw_value: float | None = None
     normalized_value: float
     weight: float
     weighted_contribution: float  # = normalized_value * weight
@@ -236,7 +236,7 @@ class ScoredFund(BaseModel):
     """A fund with its composite score and constraint results."""
 
     fund_name: str
-    metric_values: dict[MetricId, float]  # all raw metrics for display
+    metric_values: dict[MetricId, float | None]  # all raw metrics for display
     score_breakdown: list[ScoreComponent]
     composite_score: float
     rank: int
