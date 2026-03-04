@@ -11,7 +11,7 @@ import { Plus } from "lucide-react"
 const STEP_COMPONENTS = [MandateForm, UploadReview, RankingView, MemoExport]
 
 export function AllocationsPage() {
-  const { allocationActive, startAllocation, cancelAllocation, step } = useWizard()
+  const { allocationActive, startAllocation, step } = useWizard()
 
   if (!allocationActive) {
     return (
