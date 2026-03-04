@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react"
-import { useWizard, STEPS } from "@/context/WizardContext"
 import { cn } from "@/lib/utils"
 import {
   Tooltip,
@@ -8,22 +7,38 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import {
+  LayoutList,
   ClipboardList,
-  Upload,
-  BarChart3,
-  FileText,
+  TrendingUp,
+  Settings,
   PanelLeftClose,
   PanelLeft,
-  Check,
   type LucideIcon,
 } from "lucide-react"
 
-const STEP_ICONS: LucideIcon[] = [ClipboardList, Upload, BarChart3, FileText]
+export type View = "allocations" | "mandates" | "funds" | "settings"
+
+interface NavItem {
+  label: string
+  icon: LucideIcon
+  view: View
+}
+
+const NAV_ITEMS: NavItem[] = [
+  { label: "Allocations", icon: LayoutList, view: "allocations" },
+  { label: "Mandates", icon: ClipboardList, view: "mandates" },
+  { label: "Funds", icon: TrendingUp, view: "funds" },
+  { label: "Settings", icon: Settings, view: "settings" },
+]
 
 const STORAGE_KEY = "equi-sidebar-collapsed"
 
-export function AppSidebar() {
-  const { step, setStep, canNavigateTo, highestStepReached } = useWizard()
+interface AppSidebarProps {
+  view: View
+  onNavigate: (view: View) => void
+}
+
+export function AppSidebar({ view, onNavigate }: AppSidebarProps) {
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(STORAGE_KEY) === "true"
@@ -63,44 +78,35 @@ export function AppSidebar() {
           )}
         </div>
 
-        {/* Step Navigation */}
+        {/* Navigation */}
         <nav className="flex-1 space-y-1 px-2 py-4">
-          {STEPS.map((label, i) => {
-            const Icon = STEP_ICONS[i]
-            const isActive = i === step
-            const isCompleted = i < highestStepReached
-            const isReachable = canNavigateTo(i)
+          {NAV_ITEMS.map((item) => {
+            const Icon = item.icon
+            const isActive = item.view === view
 
             const navItem = (
               <button
-                key={label}
-                disabled={!isReachable}
-                onClick={() => isReachable && setStep(i)}
+                key={item.view}
+                onClick={() => onNavigate(item.view)}
                 className={cn(
-                  "relative flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium",
+                  "flex w-full items-center gap-3 rounded-md px-3 py-2.5 text-sm font-medium",
                   "transition-colors duration-150",
                   isActive && "bg-sidebar-accent text-sidebar-accent-foreground",
-                  !isActive && isReachable && "text-sidebar-foreground hover:bg-sidebar-accent/50",
-                  !isReachable && "cursor-not-allowed text-muted-foreground opacity-40",
+                  !isActive && "text-sidebar-foreground hover:bg-sidebar-accent/50",
                   collapsed && "justify-center px-0",
                 )}
               >
-                <div className="relative shrink-0">
-                  <Icon className="h-[18px] w-[18px]" />
-                  {isCompleted && (
-                    <Check className="absolute -right-1 -top-1 h-3 w-3 rounded-full bg-sidebar text-green-600" />
-                  )}
-                </div>
-                {!collapsed && <span className="truncate">{label}</span>}
+                <Icon className="h-[18px] w-[18px] shrink-0" />
+                {!collapsed && <span className="truncate">{item.label}</span>}
               </button>
             )
 
             if (collapsed) {
               return (
-                <Tooltip key={label}>
+                <Tooltip key={item.view}>
                   <TooltipTrigger asChild>{navItem}</TooltipTrigger>
                   <TooltipContent side="right" sideOffset={8}>
-                    {label}
+                    {item.label}
                   </TooltipContent>
                 </Tooltip>
               )

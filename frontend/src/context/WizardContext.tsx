@@ -221,6 +221,7 @@ export const STEPS = [
 ] as const
 
 interface WizardState {
+  allocationActive: boolean
   step: number
   highestStepReached: number
   mandate: MandateConfig | null
@@ -267,6 +268,8 @@ interface WizardActions {
   setSelectedClaimIdx: (idx: number) => void
   resetFrom: (step: number) => void
   canNavigateTo: (targetStep: number) => boolean
+  startAllocation: () => void
+  cancelAllocation: () => void
 }
 
 type WizardContextType = WizardState & WizardActions
@@ -295,6 +298,7 @@ const DEFAULT_MANDATE: MandateConfig = {
 
 function initialState(): WizardState {
   return {
+    allocationActive: false,
     step: 0,
     highestStepReached: 0,
     mandate: null,
@@ -459,6 +463,14 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     (targetStep: number) => targetStep <= state.highestStepReached,
     [state.highestStepReached],
   )
+  const startAllocation = useCallback(
+    () => setState(() => ({ ...initialState(), allocationActive: true })),
+    [],
+  )
+  const cancelAllocation = useCallback(
+    () => setState(initialState),
+    [],
+  )
 
   const value = useMemo<WizardContextType>(
     () => ({
@@ -477,6 +489,8 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       setSelectedClaimIdx,
       resetFrom,
       canNavigateTo,
+      startAllocation,
+      cancelAllocation,
     }),
     [
       state,
@@ -494,6 +508,8 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       setSelectedClaimIdx,
       resetFrom,
       canNavigateTo,
+      startAllocation,
+      cancelAllocation,
     ],
   )
 
