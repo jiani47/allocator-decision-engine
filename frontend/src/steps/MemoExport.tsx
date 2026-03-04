@@ -15,7 +15,6 @@ export function MemoExport() {
     mandate,
     universe,
     rawContext,
-    eligibility,
     benchmarkMetrics,
     memoStreaming,
     streamingMemoText,
@@ -47,8 +46,8 @@ export function MemoExport() {
 
   const dataAppendix = useMemo(() => {
     if (!universe || !mandate || !gr) return ""
-    return buildDataAppendix(universe, mandate, gr, eligibility, benchmarkMetrics)
-  }, [universe, mandate, gr, eligibility, benchmarkMetrics])
+    return buildDataAppendix(universe, mandate, gr, benchmarkMetrics)
+  }, [universe, mandate, gr, benchmarkMetrics])
 
   // Determine what to render: streaming text or final memo + appendix
   const memoContent = hasMemo

@@ -2,18 +2,8 @@ import type {
   NormalizedUniverse,
   MandateConfig,
   GroupRun,
-  FundEligibility,
-  MetricId,
 } from "@/context/WizardContext"
 import { formatMetric } from "@/lib/format"
-
-const METRIC_LABELS: Record<MetricId, string> = {
-  annualized_return: "Ann. Return",
-  annualized_volatility: "Ann. Volatility",
-  sharpe_ratio: "Sharpe Ratio",
-  max_drawdown: "Max Drawdown",
-  benchmark_correlation: "Benchmark Corr.",
-}
 
 const WEIGHT_LABELS: Record<string, string> = {
   annualized_return: "Ann. Return",
@@ -27,7 +17,6 @@ export function buildDataAppendix(
   universe: NormalizedUniverse,
   mandate: MandateConfig,
   gr: GroupRun,
-  eligibility: FundEligibility[],
   benchmarkMetrics: Record<string, number> | null,
 ): string {
   const today = new Date().toISOString().split("T")[0]
