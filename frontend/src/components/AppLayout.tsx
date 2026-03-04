@@ -4,12 +4,14 @@ import { AppSidebar, type View } from "@/components/AppSidebar"
 import { AllocationsPage } from "@/pages/AllocationsPage"
 import { MandatesPage } from "@/pages/MandatesPage"
 import { FundsPage } from "@/pages/FundsPage"
+import { BenchmarksPage } from "@/pages/BenchmarksPage"
 import { SettingsPage } from "@/pages/SettingsPage"
 
 const PAGE_COMPONENTS: Record<View, React.FC> = {
   allocations: AllocationsPage,
   mandates: MandatesPage,
   funds: FundsPage,
+  benchmarks: BenchmarksPage,
   settings: SettingsPage,
 }
 

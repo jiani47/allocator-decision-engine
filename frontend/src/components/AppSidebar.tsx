@@ -11,6 +11,7 @@ import {
   LayoutList,
   ClipboardList,
   TrendingUp,
+  LineChart,
   Settings,
   PanelLeftClose,
   PanelLeft,
@@ -18,7 +19,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
-export type View = "allocations" | "mandates" | "funds" | "settings"
+export type View = "allocations" | "mandates" | "funds" | "benchmarks" | "settings"
 
 interface NavItem {
   label: string
@@ -30,6 +31,7 @@ const NAV_ITEMS: NavItem[] = [
   { label: "Allocations", icon: LayoutList, view: "allocations" },
   { label: "Mandates", icon: ClipboardList, view: "mandates" },
   { label: "Funds", icon: TrendingUp, view: "funds" },
+  { label: "Benchmarks", icon: LineChart, view: "benchmarks" },
   { label: "Settings", icon: Settings, view: "settings" },
 ]
 
