@@ -19,18 +19,18 @@ _ASCII_REPLACEMENTS = {
     "\u2019": "'",  # right single quote
     "\u201c": '"',  # left double quote
     "\u201d": '"',  # right double quote
-    "\u2713": "[x]",  # check mark
-    "\u2714": "[x]",  # heavy check mark
-    "\u2715": "[ ]",  # multiplication x
-    "\u2716": "[ ]",  # heavy multiplication x
-    "\u2717": "[ ]",  # ballot x
-    "\u2718": "[ ]",  # heavy ballot x
-    "\u2610": "[ ]",  # ballot box
-    "\u2611": "[x]",  # ballot box with check
-    "\u2612": "[x]",  # ballot box with x
-    "\u2705": "[x]",  # white heavy check mark emoji
-    "\u274c": "[ ]",  # cross mark emoji
-    "\u274e": "[ ]",  # cross mark button emoji
+    "\u2713": "",  # check mark
+    "\u2714": "",  # heavy check mark
+    "\u2715": "",  # multiplication x
+    "\u2716": "",  # heavy multiplication x
+    "\u2717": "",  # ballot x
+    "\u2718": "",  # heavy ballot x
+    "\u2610": "",  # ballot box
+    "\u2611": "",  # ballot box with check
+    "\u2612": "",  # ballot box with x
+    "\u2705": "",  # white heavy check mark emoji
+    "\u274c": "",  # cross mark emoji
+    "\u274e": "",  # cross mark button emoji
     "\u2192": "->",  # rightwards arrow
     "\u2190": "<-",  # leftwards arrow
     "\u00b7": "-",  # middle dot
