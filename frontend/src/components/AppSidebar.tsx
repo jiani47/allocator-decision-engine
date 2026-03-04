@@ -6,6 +6,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { Button } from "@/components/ui/button"
 import {
   LayoutList,
   ClipboardList,
@@ -13,6 +14,7 @@ import {
   Settings,
   PanelLeftClose,
   PanelLeft,
+  Plus,
   type LucideIcon,
 } from "lucide-react"
 
@@ -36,9 +38,10 @@ const STORAGE_KEY = "equi-sidebar-collapsed"
 interface AppSidebarProps {
   view: View
   onNavigate: (view: View) => void
+  onNewAllocation: () => void
 }
 
-export function AppSidebar({ view, onNavigate }: AppSidebarProps) {
+export function AppSidebar({ view, onNavigate, onNewAllocation }: AppSidebarProps) {
   const [collapsed, setCollapsed] = useState(() => {
     try {
       return localStorage.getItem(STORAGE_KEY) === "true"
@@ -78,8 +81,36 @@ export function AppSidebar({ view, onNavigate }: AppSidebarProps) {
           )}
         </div>
 
+        {/* New Allocation CTA */}
+        <div className="px-2 pt-4 pb-2">
+          {collapsed ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  size="icon"
+                  className="w-full"
+                  onClick={onNewAllocation}
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="right" sideOffset={8}>
+                New Allocation
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <Button
+              className="w-full justify-start gap-2"
+              onClick={onNewAllocation}
+            >
+              <Plus className="h-4 w-4" />
+              New Allocation
+            </Button>
+          )}
+        </div>
+
         {/* Navigation */}
-        <nav className="flex-1 space-y-1 px-2 py-4">
+        <nav className="flex-1 space-y-1 px-2 py-2">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon
             const isActive = item.view === view
