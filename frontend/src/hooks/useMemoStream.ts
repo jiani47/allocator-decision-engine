@@ -1,5 +1,6 @@
-import { useState, useCallback } from "react"
+import { useCallback } from "react"
 import { streamMemo } from "@/api/client"
+import { useWizard } from "@/context/WizardContext"
 import type {
   GroupRun,
   NormalizedUniverse,
@@ -8,10 +9,17 @@ import type {
 } from "@/context/WizardContext"
 
 export function useMemoStream() {
-  const [memoText, setMemoText] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [progressMessage, setProgressMessage] = useState("")
+  const {
+    memoStreaming: loading,
+    streamingMemoText: memoText,
+    streamingError: error,
+    streamingProgressMessage: progressMessage,
+    setMemoStreaming,
+    appendMemoText,
+    setStreamingMemoText,
+    setStreamingProgressMessage,
+    setStreamingError,
+  } = useWizard()
 
   const generate = useCallback(
     async (
@@ -20,10 +28,10 @@ export function useMemoStream() {
       mandate: MandateConfig,
       warningResolutions: WarningResolution[],
     ): Promise<GroupRun | null> => {
-      setLoading(true)
-      setError(null)
-      setMemoText("")
-      setProgressMessage("Starting memo generation...")
+      setMemoStreaming(true)
+      setStreamingError(null)
+      setStreamingMemoText("")
+      setStreamingProgressMessage("Starting memo generation...")
 
       try {
         let result: GroupRun | null = null
@@ -35,19 +43,19 @@ export function useMemoStream() {
         )) {
           switch (event.event) {
             case "progress":
-              setProgressMessage(event.message)
+              setStreamingProgressMessage(event.message)
               break
             case "text_delta":
-              setMemoText((prev) => prev + event.text)
+              appendMemoText(event.text)
               break
             case "complete":
               result = event.group_run
               if (result.memo) {
-                setMemoText(result.memo.memo_text)
+                setStreamingMemoText(result.memo.memo_text)
               }
               break
             case "error":
-              setError(event.message)
+              setStreamingError(event.message)
               break
           }
         }
@@ -55,14 +63,14 @@ export function useMemoStream() {
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Memo generation failed"
         console.error("Memo stream error:", msg)
-        setError(msg)
+        setStreamingError(msg)
         return null
       } finally {
-        setLoading(false)
-        setProgressMessage("")
+        setMemoStreaming(false)
+        setStreamingProgressMessage("")
       }
     },
-    [],
+    [setMemoStreaming, setStreamingError, setStreamingMemoText, setStreamingProgressMessage, appendMemoText],
   )
 
   return { generate, memoText, loading, error, progressMessage }

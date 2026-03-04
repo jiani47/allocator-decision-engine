@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from datetime import date
 
 from app.core.schemas import (
     FactPack,
@@ -112,6 +113,7 @@ Based on the following deterministic evaluation results, draft a structured IC m
 
 ## Evaluation Data
 
+**Date:** {date.today().isoformat()}
 **Universe:** {json.dumps(fact_pack.universe_summary)}
 **Benchmark:** {fact_pack.benchmark_symbol}
 **Mandate Configuration:** {json.dumps(mandate_data, default=str)}
@@ -129,12 +131,36 @@ Based on the following deterministic evaluation results, draft a structured IC m
 6. Do NOT hallucinate performance figures.
 7. Format numbers appropriately (percentages for returns/vol/drawdown, ratios for Sharpe).
 8. If analyst data quality notes are provided above, include a "Data Quality Notes" section at the end of the memo summarizing the analyst's review decisions.
+9. In the Top Recommendations section, reference funds by rank (e.g., 'Rank #1'), not by composite score.
+
+## Output Format
+
+Output ONLY the memo text in markdown format. Do NOT wrap in JSON or code fences. Start directly with the markdown heading."""
+
+    return prompt
+
+
+def build_claims_prompt(memo_text: str, fact_pack: FactPack) -> str:
+    """Build a prompt to extract claims from a finished memo."""
+    fund_names = [sf.fund_name for sf in fact_pack.shortlist]
+    metric_ids = [m.value for m in MetricId]
+
+    return f"""Extract factual claims from the following IC memo.
+
+## Memo Text
+
+{memo_text}
+
+## Instructions
+
+1. Extract 3-8 key factual claims — sentences that assert specific numeric facts about funds.
+2. Each claim MUST reference at least one metric_id from: {metric_ids}
+3. Each claim MUST reference at least one fund name from: {fund_names}
 
 ## Output Format
 
 Return ONLY valid JSON matching this exact schema:
 {{
-  "memo_text": "The full memo text in markdown format",
   "claims": [
     {{
       "claim_id": "claim_1",
@@ -143,16 +169,17 @@ Return ONLY valid JSON matching this exact schema:
       "referenced_fund_names": ["Fund Name"]
     }}
   ]
-}}
-
-Extract 3-8 key factual claims from your memo. Each claim must have at least one metric_id and one fund_name reference."""
-
-    return prompt
+}}"""
 
 
 MEMO_SYSTEM_PROMPT = (
     "You are a senior investment analyst at a fund-of-funds. "
     "You produce structured, evidence-based IC memos. "
-    "You never invent numbers — you only reference data provided to you. "
-    "You always output valid JSON."
+    "You never invent numbers — you only reference data provided to you."
+)
+
+
+CLAIMS_SYSTEM_PROMPT = (
+    "You are an analyst extracting factual claims from IC memos. "
+    "You output only valid JSON."
 )

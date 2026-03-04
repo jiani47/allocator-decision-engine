@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from "react"
 import { useWizard, type MetricId, type ScoredFund } from "@/context/WizardContext"
 import { PageHeader } from "@/components/PageHeader"
-import { CalcSheet } from "@/components/CalcSheet"
+import { CalcSheet, SourceData } from "@/components/CalcSheet"
 import { useBenchmark } from "@/hooks/useBenchmark"
 import { useRank } from "@/hooks/useRank"
 import { useMemoStream } from "@/hooks/useMemoStream"
@@ -29,7 +29,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Info, Eye } from "lucide-react"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { exportFundToExcel } from "@/lib/excel-export"
+import { Info, Eye, Download } from "lucide-react"
 
 const METRIC_IDS: MetricId[] = [
   "annualized_return",
@@ -67,7 +69,7 @@ export function RankingView() {
 
   const { fetch: fetchBm, loading: bmLoading, error: bmError } = useBenchmark()
   const { rank, loading: rankLoading, error: rankError } = useRank()
-  const { generate: generateMemo, loading: memoLoading, error: memoError, progressMessage } = useMemoStream()
+  const { generate: generateMemo, loading: memoLoading, error: memoError } = useMemoStream()
 
   const [wRet, setWRet] = useState(mandate?.weights.annualized_return ?? 0.4)
   const [wSharpe, setWSharpe] = useState(mandate?.weights.sharpe_ratio ?? 0.4)
@@ -105,6 +107,7 @@ export function RankingView() {
 
   const handleGenerateMemo = async () => {
     if (!groupRuns[0] || !universe || !mandate) return
+    setStep(3)
     const result = await generateMemo(
       groupRuns[0],
       universe,
@@ -113,7 +116,6 @@ export function RankingView() {
     )
     if (result) {
       setGroupRuns([result])
-      setStep(3)
     }
   }
 
@@ -289,13 +291,25 @@ export function RankingView() {
               <TableBody>
                 {(() => {
                   // Build rows: funds + optional benchmark, sorted by ann. return
-                  const fundRows = gr.ranked_shortlist.map((sf) => ({
+                  type FundTableRow = {
+                    type: "fund"
+                    fund: ScoredFund
+                    annReturn: number
+                  }
+                  type BenchmarkTableRow = {
+                    type: "benchmark"
+                    fund: null
+                    annReturn: number
+                  }
+                  type TableRow = FundTableRow | BenchmarkTableRow
+
+                  const fundRows: FundTableRow[] = gr.ranked_shortlist.map((sf) => ({
                     type: "fund" as const,
                     fund: sf,
                     annReturn: sf.metric_values.annualized_return ?? -Infinity,
                   }))
 
-                  const bmRow = benchmarkMetrics
+                  const bmRow: BenchmarkTableRow | null = benchmarkMetrics
                     ? {
                         type: "benchmark" as const,
                         fund: null,
@@ -303,18 +317,17 @@ export function RankingView() {
                       }
                     : null
 
-                  // Find the insertion index: place benchmark after all funds with higher ann. return
-                  const rows: typeof fundRows = [...fundRows]
+                  const rows: TableRow[] = [...fundRows]
                   if (bmRow) {
                     const insertIdx = rows.findIndex((r) => r.annReturn < bmRow.annReturn)
                     if (insertIdx === -1) {
-                      rows.push(bmRow as typeof rows[number])
+                      rows.push(bmRow)
                     } else {
-                      rows.splice(insertIdx, 0, bmRow as typeof rows[number])
+                      rows.splice(insertIdx, 0, bmRow)
                     }
                   }
 
-                  return rows.map((row, i) => {
+                  return rows.map((row) => {
                     if (row.type === "benchmark") {
                       return (
                         <TableRow key="__benchmark__" className="bg-blue-50">
@@ -377,97 +390,128 @@ export function RankingView() {
 
       {/* Fund detail dialog */}
       <Dialog open={!!selectedFund} onOpenChange={(open) => !open && setSelectedFund(null)}>
-        <DialogContent className="max-w-4xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-[calc(100vw-4rem)] sm:max-w-5xl h-[85vh] flex flex-col overflow-hidden">
           {selectedFund && (
             <>
-              <DialogHeader>
-                <DialogTitle>{selectedFund.fund_name}</DialogTitle>
-                <DialogDescription>
-                  Rank #{selectedFund.rank} — Composite score: {selectedFund.composite_score?.toFixed(3) ?? "-"}
-                </DialogDescription>
+              <DialogHeader className="flex-row items-center justify-between gap-4 space-y-0">
+                <div>
+                  <DialogTitle>{selectedFund.fund_name}</DialogTitle>
+                  <DialogDescription>
+                    Rank #{selectedFund.rank} — Composite score: {selectedFund.composite_score?.toFixed(3) ?? "-"}
+                  </DialogDescription>
+                </div>
+                {selectedFundData && selectedFundMetrics && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 mr-8"
+                    onClick={() =>
+                      exportFundToExcel(
+                        selectedFund,
+                        selectedFundData,
+                        selectedFundMetrics,
+                        rawContext,
+                        gr?.group?.benchmark ?? benchmark,
+                      )
+                    }
+                  >
+                    <Download className="h-4 w-4" />
+                    Export to Excel
+                  </Button>
+                )}
               </DialogHeader>
 
-              {/* Score breakdown */}
-              {selectedFund.score_breakdown.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Score Breakdown</h4>
-                  <div className="rounded-md border overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>Metric</TableHead>
-                          <TableHead>Raw Value</TableHead>
-                          <TableHead>Normalized</TableHead>
-                          <TableHead>Weight</TableHead>
-                          <TableHead>Contribution</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {selectedFund.score_breakdown.map((sc) => (
-                          <TableRow key={sc.metric_id}>
-                            <TableCell className="font-medium">
-                              {METRIC_LABELS[sc.metric_id as MetricId] ?? sc.metric_id}
-                            </TableCell>
-                            <TableCell className="font-mono text-xs">
-                              {sc.raw_value?.toFixed(4) ?? "-"}
-                            </TableCell>
-                            <TableCell className="font-mono text-xs">
-                              {sc.normalized_value?.toFixed(3) ?? "-"}
-                            </TableCell>
-                            <TableCell className="font-mono text-xs">
-                              {sc.weight ?? "-"}
-                            </TableCell>
-                            <TableCell className="font-mono text-xs">
-                              {sc.weighted_contribution?.toFixed(4) ?? "-"}
-                            </TableCell>
-                          </TableRow>
+              <Tabs defaultValue="summary" className="flex-1 min-h-0 flex flex-col">
+                <TabsList className="shrink-0">
+                  <TabsTrigger value="summary">Summary</TabsTrigger>
+                  {METRIC_IDS.map((mid) => (
+                    <TabsTrigger key={mid} value={mid}>
+                      {METRIC_LABELS[mid]}
+                    </TabsTrigger>
+                  ))}
+                  <TabsTrigger value="source">Source Data</TabsTrigger>
+                </TabsList>
+
+                {/* Summary tab */}
+                <TabsContent value="summary" className="flex-1 overflow-y-auto mt-2">
+                  {/* Score breakdown */}
+                  {selectedFund.score_breakdown.length > 0 && (
+                    <div className="mb-4">
+                      <h4 className="text-sm font-medium mb-2">Score Breakdown</h4>
+                      <div className="rounded-md border overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Metric</TableHead>
+                              <TableHead>Raw Value</TableHead>
+                              <TableHead>Normalized</TableHead>
+                              <TableHead>Weight</TableHead>
+                              <TableHead>Contribution</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {selectedFund.score_breakdown.map((sc) => (
+                              <TableRow key={sc.metric_id}>
+                                <TableCell className="font-medium">
+                                  {METRIC_LABELS[sc.metric_id as MetricId] ?? sc.metric_id}
+                                </TableCell>
+                                <TableCell className="font-mono text-xs">
+                                  {sc.raw_value?.toFixed(4) ?? "-"}
+                                </TableCell>
+                                <TableCell className="font-mono text-xs">
+                                  {sc.normalized_value?.toFixed(3) ?? "-"}
+                                </TableCell>
+                                <TableCell className="font-mono text-xs">
+                                  {sc.weight ?? "-"}
+                                </TableCell>
+                                <TableCell className="font-mono text-xs">
+                                  {sc.weighted_contribution?.toFixed(4) ?? "-"}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Constraints */}
+                  {selectedFund.constraint_results.length > 0 && (
+                    <div>
+                      <h4 className="text-sm font-medium mb-2">Constraints</h4>
+                      <ul className="text-sm space-y-1 pl-4">
+                        {selectedFund.constraint_results.map((cr, i) => (
+                          <li key={i} className={cr.passed ? "text-green-600" : "text-red-600"}>
+                            [{cr.passed ? "+" : "x"}] {cr.explanation}
+                          </li>
                         ))}
-                      </TableBody>
-                    </Table>
-                  </div>
-                </div>
-              )}
+                      </ul>
+                    </div>
+                  )}
+                </TabsContent>
 
-              {/* Constraints */}
-              {selectedFund.constraint_results.length > 0 && (
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Constraints</h4>
-                  <ul className="text-sm space-y-1 pl-4">
-                    {selectedFund.constraint_results.map((cr, i) => (
-                      <li key={i} className={cr.passed ? "text-green-600" : "text-red-600"}>
-                        [{cr.passed ? "+" : "x"}] {cr.explanation}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
+                {/* Per-metric tabs */}
+                {selectedFundData && selectedFundMetrics && METRIC_IDS.map((mid) => (
+                  <TabsContent key={mid} value={mid} className="flex-1 overflow-y-auto mt-2">
+                    <CalcSheet
+                      fund={selectedFundData}
+                      metricId={mid}
+                      fundMetrics={selectedFundMetrics}
+                      rawContext={rawContext}
+                      benchmark={gr?.group?.benchmark ?? benchmark}
+                    />
+                  </TabsContent>
+                ))}
 
-              {/* Consolidated calc sheets */}
-              {selectedFundData && selectedFundMetrics && (
-                <div>
-                  <h4 className="text-sm font-medium mb-2">Calculation Sheets</h4>
-                  <div className="space-y-4">
-                    {METRIC_IDS.map((mid) => (
-                      <Collapsible key={mid}>
-                        <CollapsibleTrigger asChild>
-                          <Button variant="outline" size="sm" className="w-full justify-start">
-                            {METRIC_LABELS[mid]}
-                          </Button>
-                        </CollapsibleTrigger>
-                        <CollapsibleContent className="mt-2 pl-2">
-                          <CalcSheet
-                            fund={selectedFundData}
-                            metricId={mid}
-                            fundMetrics={selectedFundMetrics}
-                            rawContext={rawContext}
-                            benchmark={gr?.group?.benchmark ?? benchmark}
-                          />
-                        </CollapsibleContent>
-                      </Collapsible>
-                    ))}
-                  </div>
-                </div>
-              )}
+                {/* Source Data tab */}
+                <TabsContent value="source" className="flex-1 overflow-y-auto mt-2">
+                  {selectedFundData ? (
+                    <SourceData fund={selectedFundData} rawContext={rawContext} />
+                  ) : (
+                    <p className="text-sm text-muted-foreground">No source data available.</p>
+                  )}
+                </TabsContent>
+              </Tabs>
             </>
           )}
         </DialogContent>
@@ -486,9 +530,6 @@ export function RankingView() {
           Back
         </Button>
         <div className="flex items-center gap-4">
-          {memoLoading && (
-            <p className="text-sm text-muted-foreground">{progressMessage}</p>
-          )}
           {memoError && (
             <p className="text-sm text-red-600 max-w-md truncate">{memoError}</p>
           )}

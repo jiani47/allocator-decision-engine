@@ -243,6 +243,11 @@ interface WizardState {
   groupRuns: GroupRun[]
 
   selectedClaimIdx: number
+
+  memoStreaming: boolean
+  streamingMemoText: string
+  streamingProgressMessage: string
+  streamingError: string | null
 }
 
 interface WizardActions {
@@ -266,6 +271,11 @@ interface WizardActions {
   setDismissedWarnings: (warnings: Set<number>) => void
   setWarningResolutions: (resolutions: WarningResolution[]) => void
   setSelectedClaimIdx: (idx: number) => void
+  setMemoStreaming: (loading: boolean) => void
+  appendMemoText: (chunk: string) => void
+  setStreamingMemoText: (text: string) => void
+  setStreamingProgressMessage: (msg: string) => void
+  setStreamingError: (err: string | null) => void
   resetFrom: (step: number) => void
   canNavigateTo: (targetStep: number) => boolean
   startAllocation: () => void
@@ -316,6 +326,11 @@ function initialState(): WizardState {
     benchmarkMetrics: null,
     groupRuns: [],
     selectedClaimIdx: 0,
+
+    memoStreaming: false,
+    streamingMemoText: "",
+    streamingProgressMessage: "",
+    streamingError: null,
   }
 }
 
@@ -459,6 +474,26 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     (idx: number) => setState((prev) => ({ ...prev, selectedClaimIdx: idx })),
     [],
   )
+  const setMemoStreaming = useCallback(
+    (loading: boolean) => setState((prev) => ({ ...prev, memoStreaming: loading })),
+    [],
+  )
+  const appendMemoText = useCallback(
+    (chunk: string) => setState((prev) => ({ ...prev, streamingMemoText: prev.streamingMemoText + chunk })),
+    [],
+  )
+  const setStreamingMemoText = useCallback(
+    (text: string) => setState((prev) => ({ ...prev, streamingMemoText: text })),
+    [],
+  )
+  const setStreamingProgressMessage = useCallback(
+    (msg: string) => setState((prev) => ({ ...prev, streamingProgressMessage: msg })),
+    [],
+  )
+  const setStreamingError = useCallback(
+    (err: string | null) => setState((prev) => ({ ...prev, streamingError: err })),
+    [],
+  )
   const canNavigateTo = useCallback(
     (targetStep: number) => targetStep <= state.highestStepReached,
     [state.highestStepReached],
@@ -487,6 +522,11 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       setDismissedWarnings,
       setWarningResolutions,
       setSelectedClaimIdx,
+      setMemoStreaming,
+      appendMemoText,
+      setStreamingMemoText,
+      setStreamingProgressMessage,
+      setStreamingError,
       resetFrom,
       canNavigateTo,
       startAllocation,
@@ -506,6 +546,11 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       setDismissedWarnings,
       setWarningResolutions,
       setSelectedClaimIdx,
+      setMemoStreaming,
+      appendMemoText,
+      setStreamingMemoText,
+      setStreamingProgressMessage,
+      setStreamingError,
       resetFrom,
       canNavigateTo,
       startAllocation,
