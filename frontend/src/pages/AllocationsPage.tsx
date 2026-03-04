@@ -35,12 +35,7 @@ export function AllocationsPage() {
 
   return (
     <div>
-      <div className="mb-2 flex items-center justify-between">
-        <h2 className="text-lg font-semibold">New Allocation</h2>
-        <Button variant="ghost" size="sm" onClick={cancelAllocation}>
-          Cancel
-        </Button>
-      </div>
+      <h2 className="mb-2 text-lg font-semibold">New Allocation</h2>
       <StepIndicator />
       <StepComponent />
     </div>

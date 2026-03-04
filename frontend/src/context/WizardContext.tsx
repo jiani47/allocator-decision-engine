@@ -215,7 +215,7 @@ export interface WarningResolution {
 
 export const STEPS = [
   "Mandate",
-  "Upload & Review",
+  "Upload Funds",
   "Metrics & Ranking",
   "Memo & Export",
 ] as const

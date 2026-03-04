@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useState } from "react"
 import { useWizard, type WarningResolution } from "@/context/WizardContext"
 import { useUpload } from "@/hooks/useUpload"
 import { PageHeader } from "@/components/PageHeader"
@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion"
-import { Progress } from "@/components/ui/progress"
+import { FileDropzone } from "@/components/ui/file-dropzone"
 import {
   Table,
   TableBody,
@@ -32,12 +32,11 @@ export function UploadReview() {
     resetFrom,
   } = useWizard()
   const { upload, loading, error, progressText } = useUpload()
-  const fileRef = useRef<HTMLInputElement>(null)
   const [warningNotes, setWarningNotes] = useState<Record<number, string>>({})
 
-  const handleFileChange = useCallback(
-    (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0]
+  const handleDrop = useCallback(
+    (files: File[]) => {
+      const file = files[0]
       if (file && mandate) {
         upload(file, mandate)
       }
@@ -87,30 +86,21 @@ export function UploadReview() {
       />
 
       {/* File upload */}
-      <Card className="mb-6">
-        <CardContent className="pt-6">
-          <p className="text-sm text-muted-foreground mb-4">
-            Upload a CSV or Excel file with monthly return time series per fund.
-          </p>
-          <Input
-            ref={fileRef}
-            type="file"
-            accept=".csv,.xlsx,.xls"
-            onChange={handleFileChange}
-            disabled={loading}
-          />
-        </CardContent>
-      </Card>
-
-      {/* Loading */}
-      {loading && (
-        <Card className="mb-6">
-          <CardContent className="pt-6">
-            <Progress className="mb-2" />
-            <p className="text-sm text-muted-foreground">{progressText}</p>
-          </CardContent>
-        </Card>
-      )}
+      <div className="mb-6">
+        <FileDropzone
+          onDrop={handleDrop}
+          isUploading={loading}
+          accept={{
+            "text/csv": [".csv"],
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": [".xlsx"],
+            "application/vnd.ms-excel": [".xls"],
+          }}
+          hint="Supports CSV, XLS, and XLSX files"
+        />
+        {loading && (
+          <p className="mt-2 text-sm text-muted-foreground">{progressText}</p>
+        )}
+      </div>
 
       {/* Error */}
       {error && (
