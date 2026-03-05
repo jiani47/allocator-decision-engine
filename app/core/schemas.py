@@ -290,6 +290,7 @@ class Claim(BaseModel):
 
     claim_id: str
     claim_text: str
+    source_text: str = ""  # Verbatim sentence from the memo for text matching
     referenced_metric_ids: list[MetricId]
     referenced_fund_names: list[str]
 

@@ -1,10 +1,31 @@
-import { memo } from "react"
+import { memo, useMemo, type ReactNode } from "react"
 import Markdown from "react-markdown"
 import remarkGfm from "remark-gfm"
+import type {
+  Claim,
+  NormalizedFund,
+  FundMetrics,
+  ScoredFund,
+  BenchmarkSeries,
+  RawFileContext,
+} from "@/context/WizardContext"
+import { injectCitationMarkers, type MatchedClaim } from "@/lib/citation"
+import { CitationBadge } from "@/components/CitationBadge"
 
 interface MarkdownRendererProps {
   content: string
   className?: string
+}
+
+interface MemoRendererProps {
+  content: string
+  className?: string
+  claims: Claim[]
+  fundLookup: Record<string, NormalizedFund>
+  metricsLookup: Record<string, FundMetrics>
+  scoredFundLookup: Record<string, ScoredFund>
+  rawContext: RawFileContext | null
+  benchmark: BenchmarkSeries | null
 }
 
 const H1 = memo(({ children, ...props }: React.ComponentPropsWithoutRef<"h1">) => (
@@ -135,6 +156,124 @@ export function MarkdownRenderer({ content, className }: MarkdownRendererProps) 
     <div className={className}>
       <Markdown remarkPlugins={[remarkGfm]} components={COMPONENTS}>
         {content}
+      </Markdown>
+    </div>
+  )
+}
+
+// ---------------------------------------------------------------------------
+// Citation marker pattern: {{CITE:N}}
+// ---------------------------------------------------------------------------
+const CITE_PATTERN = /\{\{CITE:(\d+)\}\}/g
+
+/**
+ * Walk React children, find {{CITE:N}} markers in text nodes,
+ * and replace them with <CitationBadge> elements.
+ */
+function replaceCiteMarkers(
+  children: ReactNode,
+  matchedClaims: MatchedClaim[],
+  fundLookup: Record<string, NormalizedFund>,
+  metricsLookup: Record<string, FundMetrics>,
+  scoredFundLookup: Record<string, ScoredFund>,
+  rawContext: RawFileContext | null,
+  benchmark: BenchmarkSeries | null,
+): ReactNode {
+  if (typeof children === "string") {
+    const parts: ReactNode[] = []
+    let lastIndex = 0
+    let match: RegExpExecArray | null
+
+    // Reset regex state
+    CITE_PATTERN.lastIndex = 0
+    while ((match = CITE_PATTERN.exec(children)) !== null) {
+      const citeNum = parseInt(match[1], 10)
+      const mc = matchedClaims.find((m) => m.index === citeNum)
+      if (!mc) continue
+
+      // Push text before the marker
+      if (match.index > lastIndex) {
+        parts.push(children.slice(lastIndex, match.index))
+      }
+
+      parts.push(
+        <CitationBadge
+          key={`cite-${citeNum}-${match.index}`}
+          number={citeNum}
+          claim={mc.claim}
+          fundLookup={fundLookup}
+          metricsLookup={metricsLookup}
+          scoredFundLookup={scoredFundLookup}
+          rawContext={rawContext}
+          benchmark={benchmark}
+        />,
+      )
+      lastIndex = match.index + match[0].length
+    }
+
+    if (parts.length === 0) return children
+    if (lastIndex < children.length) {
+      parts.push(children.slice(lastIndex))
+    }
+    return <>{parts}</>
+  }
+
+  if (Array.isArray(children)) {
+    return children.map((child, i) => (
+      <span key={i}>
+        {replaceCiteMarkers(child, matchedClaims, fundLookup, metricsLookup, scoredFundLookup, rawContext, benchmark)}
+      </span>
+    ))
+  }
+
+  return children
+}
+
+/**
+ * MemoRenderer: Markdown renderer with inline citation badges.
+ * Preprocesses memo text to inject citation markers, then renders
+ * with custom components that replace markers with CitationBadge popovers.
+ */
+export function MemoRenderer({
+  content,
+  className,
+  claims,
+  fundLookup,
+  metricsLookup,
+  scoredFundLookup,
+  rawContext,
+  benchmark,
+}: MemoRendererProps) {
+  const { annotatedText, matchedClaims } = useMemo(
+    () => injectCitationMarkers(content, claims),
+    [content, claims],
+  )
+
+  const components = useMemo(() => {
+    if (matchedClaims.length === 0) return COMPONENTS
+
+    // Create citation-aware P and Li components
+    const CitedP = ({ children, ...props }: React.ComponentPropsWithoutRef<"p">) => (
+      <p className="mb-4 text-foreground" {...props}>
+        {replaceCiteMarkers(children, matchedClaims, fundLookup, metricsLookup, scoredFundLookup, rawContext, benchmark)}
+      </p>
+    )
+    CitedP.displayName = "CitedP"
+
+    const CitedLi = ({ children, ...props }: React.ComponentPropsWithoutRef<"li">) => (
+      <li className="mb-1 text-foreground" {...props}>
+        {replaceCiteMarkers(children, matchedClaims, fundLookup, metricsLookup, scoredFundLookup, rawContext, benchmark)}
+      </li>
+    )
+    CitedLi.displayName = "CitedLi"
+
+    return { ...COMPONENTS, p: CitedP, li: CitedLi }
+  }, [matchedClaims, fundLookup, metricsLookup, scoredFundLookup, rawContext, benchmark])
+
+  return (
+    <div className={className}>
+      <Markdown remarkPlugins={[remarkGfm]} components={components}>
+        {annotatedText}
       </Markdown>
     </div>
   )

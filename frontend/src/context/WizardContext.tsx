@@ -146,6 +146,7 @@ export interface FundEligibility {
 export interface Claim {
   claim_id: string
   claim_text: string
+  source_text: string
   referenced_metric_ids: MetricId[]
   referenced_fund_names: string[]
 }

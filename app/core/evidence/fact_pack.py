@@ -172,7 +172,7 @@ def build_claims_prompt(memo_text: str, fact_pack: FactPack) -> str:
     fund_names = [sf.fund_name for sf in fact_pack.shortlist]
     metric_ids = [m.value for m in MetricId]
 
-    return f"""Extract factual claims from the following IC memo.
+    return f"""Locate exact sentences in the following IC memo that make factual claims about fund performance.
 
 ## Memo Text
 
@@ -180,9 +180,11 @@ def build_claims_prompt(memo_text: str, fact_pack: FactPack) -> str:
 
 ## Instructions
 
-1. Extract 3-8 key factual claims — sentences that assert specific numeric facts about funds.
+1. Identify 3-8 key sentences that assert specific numeric facts about funds.
 2. Each claim MUST reference at least one metric_id from: {metric_ids}
 3. Each claim MUST reference at least one fund name from: {fund_names}
+4. The `source_text` field MUST be an exact verbatim copy of a sentence from the memo above. Do NOT paraphrase, shorten, or alter it in any way. It will be used for exact text matching against the memo.
+5. The `claim_text` field should be a short human-readable summary of the claim (can be paraphrased).
 
 ## Output Format
 
@@ -191,7 +193,8 @@ Return ONLY valid JSON matching this exact schema:
   "claims": [
     {{
       "claim_id": "claim_1",
-      "claim_text": "The exact sentence containing a factual claim",
+      "claim_text": "Short summary of the factual claim",
+      "source_text": "Copy the exact sentence from the memo verbatim — it must appear character-for-character in the memo text above",
       "referenced_metric_ids": ["annualized_return", "sharpe_ratio"],
       "referenced_fund_names": ["Fund Name"]
     }}

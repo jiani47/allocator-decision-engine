@@ -2,8 +2,7 @@ import { useState, useMemo } from "react"
 import { useWizard } from "@/context/WizardContext"
 import { exportPdf } from "@/api/client"
 import { PageHeader } from "@/components/PageHeader"
-import { MarkdownRenderer } from "@/components/MarkdownRenderer"
-import { ClaimsPanel } from "@/components/ClaimsPanel"
+import { MarkdownRenderer, MemoRenderer } from "@/components/MarkdownRenderer"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { buildDataAppendix } from "@/lib/data-appendix"
@@ -43,6 +42,9 @@ export function MemoExport() {
   const metricsLookup = gr?.fund_metrics
     ? Object.fromEntries(gr.fund_metrics.map((m) => [m.fund_name, m]))
     : {}
+  const scoredFundLookup = gr?.ranked_shortlist
+    ? Object.fromEntries(gr.ranked_shortlist.map((sf) => [sf.fund_name, sf]))
+    : {}
 
   const dataAppendix = useMemo(() => {
     if (!universe || !mandate || !gr) return ""
@@ -53,6 +55,8 @@ export function MemoExport() {
   const memoContent = hasMemo
     ? gr.memo!.memo_text + "\n\n" + dataAppendix
     : streamingMemoText
+
+  const claims = hasMemo ? gr.memo!.claims : []
 
   const handleExportPdf = async () => {
     setExporting(true)
@@ -78,26 +82,23 @@ export function MemoExport() {
         description="Review the generated memo, audit claims, and export."
       />
 
-      <div className="flex gap-0">
-        {/* Memo content */}
-        <div className="flex-1 min-w-0">
-          <div className={memoStreaming && !hasMemo ? "border-l-2 border-blue-400 pl-4" : ""}>
-            {memoStreaming && !hasMemo && !streamingMemoText && streamingProgressMessage && (
-              <p className="text-sm text-muted-foreground mb-2">{streamingProgressMessage}</p>
-            )}
-            <MarkdownRenderer content={memoContent} className="mb-8" />
-          </div>
-        </div>
-
-        {/* Claims side panel — only when memo is complete */}
-        {hasMemo && gr.memo!.claims.length > 0 && (
-          <ClaimsPanel
-            claims={gr.memo!.claims}
+      <div className={memoStreaming && !hasMemo ? "border-l-2 border-blue-400 pl-4" : ""}>
+        {memoStreaming && !hasMemo && !streamingMemoText && streamingProgressMessage && (
+          <p className="text-sm text-muted-foreground mb-2">{streamingProgressMessage}</p>
+        )}
+        {hasMemo && claims.length > 0 ? (
+          <MemoRenderer
+            content={memoContent}
+            className="mb-8"
+            claims={claims}
             fundLookup={fundLookup}
             metricsLookup={metricsLookup}
+            scoredFundLookup={scoredFundLookup}
             rawContext={rawContext}
             benchmark={gr.group.benchmark}
           />
+        ) : (
+          <MarkdownRenderer content={memoContent} className="mb-8" />
         )}
       </div>
 
