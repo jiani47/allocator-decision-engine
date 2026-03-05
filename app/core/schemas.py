@@ -210,6 +210,7 @@ class MandateConfig(BaseModel):
             MetricId.ANNUALIZED_RETURN: 0.4,
             MetricId.SHARPE_RATIO: 0.4,
             MetricId.MAX_DRAWDOWN: 0.2,
+            MetricId.BENCHMARK_CORRELATION: 0.0,
         }
     )
     shortlist_top_k: int = 3  # Top N funds included in memo

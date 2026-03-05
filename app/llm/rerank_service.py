@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 
 from pydantic import ValidationError
 
@@ -87,7 +88,7 @@ def _build_rerank_prompt(
 
         # Metric values
         for mid, val in sf.metric_values.items():
-            if val is not None:
+            if val is not None and not math.isnan(val):
                 lines.append(f"- {mid}: {val:.6f}")
 
         # Qualitative metadata from universe

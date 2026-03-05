@@ -464,6 +464,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
         benchmark,
         benchmarkMetrics: metrics,
         benchmarkSymbol: benchmark.symbol,
+        groupRuns: [],  // Clear so ranking re-triggers with benchmark
       })),
     [],
   )

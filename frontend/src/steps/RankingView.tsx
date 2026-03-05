@@ -77,6 +77,7 @@ export function RankingView() {
   const [wRet, setWRet] = useState(mandate?.weights.annualized_return ?? 0.4)
   const [wSharpe, setWSharpe] = useState(mandate?.weights.sharpe_ratio ?? 0.4)
   const [wDD, setWDD] = useState(mandate?.weights.max_drawdown ?? 0.2)
+  const [wCorr, setWCorr] = useState(mandate?.weights.benchmark_correlation ?? 0)
   const [selectedFund, setSelectedFund] = useState<ScoredFund | null>(null)
   const [rankingTab, setRankingTab] = useState<"quantitative" | "ai-assisted">("quantitative")
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -90,6 +91,7 @@ export function RankingView() {
       if (wRet > 0) newWeights["annualized_return"] = wRet
       if (wSharpe > 0) newWeights["sharpe_ratio"] = wSharpe
       if (wDD > 0) newWeights["max_drawdown"] = wDD
+      if (wCorr > 0) newWeights["benchmark_correlation"] = wCorr
 
       const changed = JSON.stringify(newWeights) !== JSON.stringify(mandate.weights)
       if (changed) {
@@ -100,7 +102,7 @@ export function RankingView() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [wRet, wSharpe, wDD]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [wRet, wSharpe, wDD, wCorr]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Trigger ranking when groupRuns is empty and we have all prerequisites
   useEffect(() => {
@@ -127,7 +129,7 @@ export function RankingView() {
   }
 
   const gr = groupRuns[0]
-  const total = wRet + wSharpe + wDD
+  const total = wRet + wSharpe + wDD + wCorr
 
   // Look up fund data for the detail dialog
   const selectedFundData = selectedFund && universe
@@ -212,7 +214,7 @@ export function RankingView() {
         </Popover>
       </div>
 
-      <div className="grid grid-cols-3 gap-6 mb-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-2">
         <div>
           <Label className="text-sm">Annualized Return: {wRet.toFixed(2)}</Label>
           <Slider
@@ -238,6 +240,16 @@ export function RankingView() {
           <Slider
             value={[wDD]}
             onValueChange={([v]) => setWDD(v)}
+            min={0}
+            max={1}
+            step={0.05}
+          />
+        </div>
+        <div>
+          <Label className="text-sm">Benchmark Corr.: {wCorr.toFixed(2)}</Label>
+          <Slider
+            value={[wCorr]}
+            onValueChange={([v]) => setWCorr(v)}
             min={0}
             max={1}
             step={0.05}
