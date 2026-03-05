@@ -1,9 +1,10 @@
 import { useEffect, useState, useRef } from "react"
-import { useWizard, type MetricId, type ScoredFund } from "@/context/WizardContext"
+import { useWizard, type MetricId, type ScoredFund, type ReRankRationale } from "@/context/WizardContext"
 import { PageHeader } from "@/components/PageHeader"
 import { CalcSheet, SourceData } from "@/components/CalcSheet"
 import { useBenchmark } from "@/hooks/useBenchmark"
 import { useRank } from "@/hooks/useRank"
+import { useRerank } from "@/hooks/useRerank"
 import { useMemoStream } from "@/hooks/useMemoStream"
 import { formatMetric } from "@/lib/format"
 import { Button } from "@/components/ui/button"
@@ -12,6 +13,7 @@ import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import {
@@ -31,7 +33,7 @@ import {
 } from "@/components/ui/table"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { exportFundToExcel } from "@/lib/excel-export"
-import { Info, Eye, Download } from "lucide-react"
+import { Info, Eye, Download, Sparkles } from "lucide-react"
 
 const METRIC_IDS: MetricId[] = [
   "annualized_return",
@@ -69,12 +71,14 @@ export function RankingView() {
 
   const { fetch: fetchBm, loading: bmLoading, error: bmError } = useBenchmark()
   const { rank, loading: rankLoading, error: rankError } = useRank()
+  const { rerank, loading: rerankLoading, error: rerankError } = useRerank()
   const { generate: generateMemo, loading: memoLoading, error: memoError } = useMemoStream()
 
   const [wRet, setWRet] = useState(mandate?.weights.annualized_return ?? 0.4)
   const [wSharpe, setWSharpe] = useState(mandate?.weights.sharpe_ratio ?? 0.4)
   const [wDD, setWDD] = useState(mandate?.weights.max_drawdown ?? 0.2)
   const [selectedFund, setSelectedFund] = useState<ScoredFund | null>(null)
+  const [rankingTab, setRankingTab] = useState<"quantitative" | "ai-assisted">("quantitative")
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Auto re-rank when weights change (debounced)
@@ -105,6 +109,8 @@ export function RankingView() {
     }
   }, [universe, mandate, groupRuns.length, rankLoading, rank])
 
+  const useAiRanking = rankingTab === "ai-assisted" && !!groupRuns[0]?.llm_rerank
+
   const handleGenerateMemo = async () => {
     if (!groupRuns[0] || !universe || !mandate) return
     setStep(3)
@@ -113,6 +119,7 @@ export function RankingView() {
       universe,
       mandate,
       warningResolutions,
+      useAiRanking,
     )
     if (result) {
       setGroupRuns([result])
@@ -128,6 +135,9 @@ export function RankingView() {
     : null
   const selectedFundMetrics = selectedFund
     ? (gr?.fund_metrics ?? fundMetrics).find((fm) => fm.fund_name === selectedFund.fund_name)
+    : null
+  const selectedFundRerank: ReRankRationale | null = selectedFund && gr?.llm_rerank
+    ? gr.llm_rerank.reranked_funds.find((r) => r.fund_name === selectedFund.fund_name) ?? null
     : null
 
   return (
@@ -273,118 +283,196 @@ export function RankingView() {
             </Collapsible>
           )}
 
-          {/* Ranked shortlist table */}
-          <div className="mb-6 rounded-md border overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Rank</TableHead>
-                  <TableHead>Fund</TableHead>
-                  <TableHead>Score</TableHead>
-                  {METRIC_IDS.map((mid) => (
-                    <TableHead key={mid}>{METRIC_LABELS[mid]}</TableHead>
-                  ))}
-                  <TableHead>Constraints</TableHead>
-                  <TableHead className="w-[60px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {(() => {
-                  // Build rows: funds + optional benchmark, sorted by ann. return
-                  type FundTableRow = {
-                    type: "fund"
-                    fund: ScoredFund
-                    annReturn: number
-                  }
-                  type BenchmarkTableRow = {
-                    type: "benchmark"
-                    fund: null
-                    annReturn: number
-                  }
-                  type TableRow = FundTableRow | BenchmarkTableRow
+          {/* Tab toggle when AI re-rank is available */}
+          {gr.llm_rerank && (
+            <Tabs value={rankingTab} onValueChange={(v) => setRankingTab(v as "quantitative" | "ai-assisted")} className="mb-4">
+              <TabsList>
+                <TabsTrigger value="quantitative">Quantitative</TabsTrigger>
+                <TabsTrigger value="ai-assisted">AI-Assisted</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
 
-                  const fundRows: FundTableRow[] = gr.ranked_shortlist.map((sf) => ({
-                    type: "fund" as const,
-                    fund: sf,
-                    annReturn: sf.metric_values.annualized_return ?? -Infinity,
-                  }))
+          {/* Re-rank error */}
+          {rerankError && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertDescription>{rerankError}</AlertDescription>
+            </Alert>
+          )}
 
-                  const bmRow: BenchmarkTableRow | null = benchmarkMetrics
-                    ? {
-                        type: "benchmark" as const,
-                        fund: null,
-                        annReturn: benchmarkMetrics.annualized_return ?? -Infinity,
-                      }
-                    : null
+          {/* AI-Assisted view */}
+          {rankingTab === "ai-assisted" && gr.llm_rerank && (
+            <>
+              <div className="mb-4 rounded-md bg-muted/50 p-4 text-sm whitespace-pre-wrap">
+                {gr.llm_rerank.overall_commentary}
+              </div>
+              <div className="mb-6 rounded-md border overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>AI Rank</TableHead>
+                      <TableHead>Fund</TableHead>
+                      <TableHead>Det. Rank</TableHead>
+                      {METRIC_IDS.map((mid) => (
+                        <TableHead key={mid}>{METRIC_LABELS[mid]}</TableHead>
+                      ))}
+                      <TableHead>Rationale</TableHead>
+                      <TableHead className="w-[60px]"></TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {[...gr.llm_rerank.reranked_funds]
+                      .sort((a, b) => a.llm_rank - b.llm_rank)
+                      .map((rr) => {
+                        const sf = gr.ranked_shortlist.find((s) => s.fund_name === rr.fund_name)
+                        return (
+                          <TableRow key={rr.fund_name}>
+                            <TableCell className="font-medium">{rr.llm_rank}</TableCell>
+                            <TableCell className="font-medium">{rr.fund_name}</TableCell>
+                            <TableCell className="text-muted-foreground">{rr.deterministic_rank}</TableCell>
+                            {METRIC_IDS.map((mid) => (
+                              <TableCell key={mid}>
+                                {sf ? formatMetric(mid, sf.metric_values[mid]) : "-"}
+                              </TableCell>
+                            ))}
+                            <TableCell className="max-w-[200px] truncate text-sm text-muted-foreground" title={rr.rationale}>
+                              {rr.rationale}
+                            </TableCell>
+                            <TableCell>
+                              {sf && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 w-8 p-0"
+                                  onClick={() => setSelectedFund(sf)}
+                                >
+                                  <Eye className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                        )
+                      })}
+                  </TableBody>
+                </Table>
+              </div>
+            </>
+          )}
 
-                  const rows: TableRow[] = [...fundRows]
-                  if (bmRow) {
-                    const insertIdx = rows.findIndex((r) => r.annReturn < bmRow.annReturn)
-                    if (insertIdx === -1) {
-                      rows.push(bmRow)
-                    } else {
-                      rows.splice(insertIdx, 0, bmRow)
+          {/* Quantitative view (original table) */}
+          {rankingTab === "quantitative" && (
+            <div className="mb-6 rounded-md border overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Rank</TableHead>
+                    <TableHead>Fund</TableHead>
+                    <TableHead>Score</TableHead>
+                    {METRIC_IDS.map((mid) => (
+                      <TableHead key={mid}>{METRIC_LABELS[mid]}</TableHead>
+                    ))}
+                    <TableHead>Constraints</TableHead>
+                    <TableHead className="w-[60px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(() => {
+                    // Build rows: funds + optional benchmark, sorted by ann. return
+                    type FundTableRow = {
+                      type: "fund"
+                      fund: ScoredFund
+                      annReturn: number
                     }
-                  }
+                    type BenchmarkTableRow = {
+                      type: "benchmark"
+                      fund: null
+                      annReturn: number
+                    }
+                    type TableRowType = FundTableRow | BenchmarkTableRow
 
-                  return rows.map((row) => {
-                    if (row.type === "benchmark") {
+                    const fundRows: FundTableRow[] = gr.ranked_shortlist.map((sf) => ({
+                      type: "fund" as const,
+                      fund: sf,
+                      annReturn: sf.metric_values.annualized_return ?? -Infinity,
+                    }))
+
+                    const bmRow: BenchmarkTableRow | null = benchmarkMetrics
+                      ? {
+                          type: "benchmark" as const,
+                          fund: null,
+                          annReturn: benchmarkMetrics.annualized_return ?? -Infinity,
+                        }
+                      : null
+
+                    const rows: TableRowType[] = [...fundRows]
+                    if (bmRow) {
+                      const insertIdx = rows.findIndex((r) => r.annReturn < bmRow.annReturn)
+                      if (insertIdx === -1) {
+                        rows.push(bmRow)
+                      } else {
+                        rows.splice(insertIdx, 0, bmRow)
+                      }
+                    }
+
+                    return rows.map((row) => {
+                      if (row.type === "benchmark") {
+                        return (
+                          <TableRow key="__benchmark__" className="bg-blue-50">
+                            <TableCell className="text-muted-foreground">—</TableCell>
+                            <TableCell className="font-medium">
+                              {benchmarkSymbol.toUpperCase()}{" "}
+                              <span className="text-xs text-blue-600 font-normal">(Benchmark)</span>
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">—</TableCell>
+                            {METRIC_IDS.map((mid) => (
+                              <TableCell key={mid}>
+                                {mid === "benchmark_correlation"
+                                  ? "1.000"
+                                  : formatMetric(mid, benchmarkMetrics![mid as keyof typeof benchmarkMetrics] as number)}
+                              </TableCell>
+                            ))}
+                            <TableCell className="text-muted-foreground">—</TableCell>
+                            <TableCell />
+                          </TableRow>
+                        )
+                      }
+
+                      const sf = row.fund!
                       return (
-                        <TableRow key="__benchmark__" className="bg-blue-50">
-                          <TableCell className="text-muted-foreground">—</TableCell>
-                          <TableCell className="font-medium">
-                            {benchmarkSymbol.toUpperCase()}{" "}
-                            <span className="text-xs text-blue-600 font-normal">(Benchmark)</span>
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">—</TableCell>
+                        <TableRow key={sf.fund_name}>
+                          <TableCell>{sf.rank}</TableCell>
+                          <TableCell className="font-medium">{sf.fund_name}</TableCell>
+                          <TableCell>{sf.composite_score?.toFixed(3) ?? "-"}</TableCell>
                           {METRIC_IDS.map((mid) => (
                             <TableCell key={mid}>
-                              {mid === "benchmark_correlation"
-                                ? "1.000"
-                                : formatMetric(mid, benchmarkMetrics![mid as keyof typeof benchmarkMetrics] as number)}
+                              {formatMetric(mid, sf.metric_values[mid])}
                             </TableCell>
                           ))}
-                          <TableCell className="text-muted-foreground">—</TableCell>
-                          <TableCell />
+                          <TableCell>
+                            {sf.all_constraints_passed ? (
+                              <span className="text-green-600">Pass</span>
+                            ) : (
+                              <span className="text-red-600">FAIL</span>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-8 w-8 p-0"
+                              onClick={() => setSelectedFund(sf)}
+                            >
+                              <Eye className="h-4 w-4" />
+                            </Button>
+                          </TableCell>
                         </TableRow>
                       )
-                    }
-
-                    const sf = row.fund!
-                    return (
-                      <TableRow key={sf.fund_name}>
-                        <TableCell>{sf.rank}</TableCell>
-                        <TableCell className="font-medium">{sf.fund_name}</TableCell>
-                        <TableCell>{sf.composite_score?.toFixed(3) ?? "-"}</TableCell>
-                        {METRIC_IDS.map((mid) => (
-                          <TableCell key={mid}>
-                            {formatMetric(mid, sf.metric_values[mid])}
-                          </TableCell>
-                        ))}
-                        <TableCell>
-                          {sf.all_constraints_passed ? (
-                            <span className="text-green-600">Pass</span>
-                          ) : (
-                            <span className="text-red-600">FAIL</span>
-                          )}
-                        </TableCell>
-                        <TableCell>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="h-8 w-8 p-0"
-                            onClick={() => setSelectedFund(sf)}
-                          >
-                            <Eye className="h-4 w-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    )
-                  })
-                })()}
-              </TableBody>
-            </Table>
-          </div>
+                    })
+                  })()}
+                </TableBody>
+              </Table>
+            </div>
+          )}
         </>
       )}
 
@@ -488,6 +576,28 @@ export function RankingView() {
                       </ul>
                     </div>
                   )}
+
+                  {/* AI Rationale */}
+                  {selectedFundRerank && (
+                    <div className="mt-4">
+                      <h4 className="text-sm font-medium mb-2 flex items-center gap-1.5">
+                        <Sparkles className="h-4 w-4" />
+                        AI Rationale
+                      </h4>
+                      <p className="text-sm mb-2">
+                        AI Rank: <strong>#{selectedFundRerank.llm_rank}</strong>{" "}
+                        <span className="text-muted-foreground">
+                          (Det. Rank: #{selectedFundRerank.deterministic_rank})
+                        </span>
+                      </p>
+                      <p className="text-sm mb-3">{selectedFundRerank.rationale}</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedFundRerank.key_factors.map((factor) => (
+                          <Badge key={factor} variant="secondary">{factor}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </TabsContent>
 
                 {/* Per-metric tabs */}
@@ -534,10 +644,25 @@ export function RankingView() {
             <p className="text-sm text-red-600 max-w-md truncate">{memoError}</p>
           )}
           <Button
+            variant="outline"
+            onClick={() => {
+              rerank()
+              setRankingTab("ai-assisted")
+            }}
+            disabled={!gr || rerankLoading}
+          >
+            <Sparkles className="h-4 w-4 mr-1.5" />
+            {rerankLoading ? "Re-Ranking..." : "AI Re-Rank"}
+          </Button>
+          <Button
             onClick={handleGenerateMemo}
             disabled={!gr || memoLoading}
           >
-            {memoLoading ? "Generating..." : "Generate Memo"}
+            {memoLoading
+              ? "Generating..."
+              : useAiRanking
+                ? "Generate Memo (AI-Ranked)"
+                : "Generate Memo"}
           </Button>
         </div>
       </div>

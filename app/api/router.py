@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 import pandas as pd
-from fastapi import APIRouter, File, Form, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response, StreamingResponse
 
 from app.api.schemas import (
@@ -15,6 +15,8 @@ from app.api.schemas import (
     MemoStreamRequest,
     RankRequest,
     RankResponse,
+    ReRankRequest,
+    ReRankResponse,
     UploadResponse,
 )
 from app.api.streaming import memo_stream_sse
@@ -22,6 +24,7 @@ from app.config import Settings
 from app.core.metrics.returns import annualized_return, annualized_volatility
 from app.core.metrics.risk import max_drawdown, sharpe_ratio
 from app.core.schemas import FundGroup, MandateConfig
+from app.core.exceptions import ReRankError
 from app.services import (
     step_classify_eligibility,
     step_compute_metrics,
@@ -30,6 +33,7 @@ from app.services import (
     step_normalize_from_llm,
     step_parse_raw,
     step_rank_group,
+    step_rerank,
 )
 
 logger = logging.getLogger("equi.api")
@@ -118,6 +122,23 @@ def rank(request: RankRequest) -> RankResponse:
     )
 
     return RankResponse(group_run=group_run)
+
+
+@router.post("/rerank", response_model=ReRankResponse)
+def rerank(request: ReRankRequest) -> ReRankResponse:
+    """Re-rank funds using LLM qualitative judgment."""
+    settings = Settings()
+    try:
+        result = step_rerank(
+            request.group_run,
+            request.universe,
+            request.mandate,
+            settings,
+            warning_resolutions=request.warning_resolutions or None,
+        )
+    except ReRankError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    return ReRankResponse(llm_rerank=result)
 
 
 @router.post("/memo/stream")

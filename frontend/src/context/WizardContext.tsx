@@ -176,6 +176,21 @@ export interface FundGroup {
   grouping_rationale: string
 }
 
+export interface ReRankRationale {
+  fund_name: string
+  llm_rank: number
+  deterministic_rank: number
+  rationale: string
+  key_factors: string[]
+  referenced_metric_ids: MetricId[]
+}
+
+export interface LLMReRankResult {
+  reranked_funds: ReRankRationale[]
+  overall_commentary: string
+  model_used: string
+}
+
 export interface GroupRun {
   group: FundGroup
   fund_metrics: FundMetrics[]
@@ -183,6 +198,7 @@ export interface GroupRun {
   run_candidates: RunCandidate[]
   memo: MemoOutput | null
   fact_pack: FactPack | null
+  llm_rerank: LLMReRankResult | null
 }
 
 export interface LLMExtractedFund {
@@ -244,6 +260,9 @@ interface WizardState {
 
   selectedClaimIdx: number
 
+  rerankLoading: boolean
+  rerankError: string | null
+
   memoStreaming: boolean
   streamingMemoText: string
   streamingProgressMessage: string
@@ -271,6 +290,8 @@ interface WizardActions {
   setDismissedWarnings: (warnings: Set<number>) => void
   setWarningResolutions: (resolutions: WarningResolution[]) => void
   setSelectedClaimIdx: (idx: number) => void
+  setRerankLoading: (loading: boolean) => void
+  setRerankError: (err: string | null) => void
   setMemoStreaming: (loading: boolean) => void
   appendMemoText: (chunk: string) => void
   setStreamingMemoText: (text: string) => void
@@ -326,6 +347,9 @@ function initialState(): WizardState {
     benchmarkMetrics: null,
     groupRuns: [],
     selectedClaimIdx: 0,
+
+    rerankLoading: false,
+    rerankError: null,
 
     memoStreaming: false,
     streamingMemoText: "",
@@ -474,6 +498,14 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     (idx: number) => setState((prev) => ({ ...prev, selectedClaimIdx: idx })),
     [],
   )
+  const setRerankLoading = useCallback(
+    (loading: boolean) => setState((prev) => ({ ...prev, rerankLoading: loading })),
+    [],
+  )
+  const setRerankError = useCallback(
+    (err: string | null) => setState((prev) => ({ ...prev, rerankError: err })),
+    [],
+  )
   const setMemoStreaming = useCallback(
     (loading: boolean) => setState((prev) => ({ ...prev, memoStreaming: loading })),
     [],
@@ -522,6 +554,8 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       setDismissedWarnings,
       setWarningResolutions,
       setSelectedClaimIdx,
+      setRerankLoading,
+      setRerankError,
       setMemoStreaming,
       appendMemoText,
       setStreamingMemoText,
@@ -546,6 +580,8 @@ export function WizardProvider({ children }: { children: ReactNode }) {
       setDismissedWarnings,
       setWarningResolutions,
       setSelectedClaimIdx,
+      setRerankLoading,
+      setRerankError,
       setMemoStreaming,
       appendMemoText,
       setStreamingMemoText,

@@ -28,3 +28,7 @@ class LLMIngestionError(DecisionEngineError):
 
 class FundGroupingError(DecisionEngineError):
     """Raised when LLM-based fund grouping fails."""
+
+
+class ReRankError(DecisionEngineError):
+    """Raised when LLM-based re-ranking fails."""

@@ -13,6 +13,7 @@ from app.core.schemas import (
     FundMetrics,
     GroupRun,
     LLMIngestionResult,
+    LLMReRankResult,
     MandateConfig,
     NormalizedUniverse,
     RawFileContext,
@@ -88,11 +89,27 @@ class MemoStreamRequest(BaseModel):
     universe: NormalizedUniverse
     mandate: MandateConfig
     warning_resolutions: list[WarningResolution] = Field(default_factory=list)
+    use_ai_ranking: bool = False
 
 
 # ---------------------------------------------------------------------------
 # Export
 # ---------------------------------------------------------------------------
+
+
+class ReRankRequest(BaseModel):
+    """Request body for POST /api/rerank."""
+
+    group_run: GroupRun
+    universe: NormalizedUniverse
+    mandate: MandateConfig
+    warning_resolutions: list[WarningResolution] = Field(default_factory=list)
+
+
+class ReRankResponse(BaseModel):
+    """Response from POST /api/rerank."""
+
+    llm_rerank: LLMReRankResult
 
 
 class ExportPdfRequest(BaseModel):

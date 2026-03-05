@@ -10,6 +10,7 @@ from app.core.schemas import (
     MandateConfig,
     MetricId,
     NormalizedUniverse,
+    ReRankRationale,
     ScoredFund,
     WarningResolution,
 )
@@ -24,8 +25,9 @@ def build_fact_pack(
     analyst_notes: list[WarningResolution] | None = None,
     group_name: str = "",
     group_rationale: str = "",
+    ai_rationales: list[ReRankRationale] | None = None,
 ) -> FactPack:
-    """Assemble the deterministic fact pack that the LLM will use."""
+    """Assemble the fact pack that the LLM will use."""
     universe_summary = {
         "total_funds": len(universe.funds),
         "date_range": f"{min(f.date_range_start for f in universe.funds)} to {max(f.date_range_end for f in universe.funds)}",
@@ -42,6 +44,7 @@ def build_fact_pack(
         analyst_notes=analyst_notes or [],
         group_name=group_name,
         group_rationale=group_rationale,
+        ai_rationales=ai_rationales or [],
     )
 
 
@@ -107,9 +110,33 @@ Include a "Data Quality Notes" section at the end of the memo summarizing these 
 """
         scope_description = f"the **{fact_pack.group_name}** peer group ({n_funds} funds)"
 
+    # Build AI rationales section if present
+    ai_rationales_section = ""
+    if fact_pack.ai_rationales:
+        rationale_lines = []
+        for rr in sorted(fact_pack.ai_rationales, key=lambda r: r.llm_rank):
+            factors = ", ".join(rr.key_factors) if rr.key_factors else "none"
+            rationale_lines.append(
+                f"- **{rr.fund_name}** (AI Rank #{rr.llm_rank}, "
+                f"Det. Rank #{rr.deterministic_rank}): "
+                f"{rr.rationale} [key factors: {factors}]"
+            )
+        ai_rationales_section = f"""
+
+## AI-Assisted Ranking Context
+
+An AI analyst re-ranked the shortlist considering qualitative factors (fees, strategy fit,
+liquidity, data quality) alongside quantitative metrics. The ranking above reflects the
+AI-assisted order. Incorporate these qualitative insights into the memo's analysis.
+
+{chr(10).join(rationale_lines)}
+"""
+
+    ranking_basis = "AI-assisted" if fact_pack.ai_rationales else "deterministic"
+
     prompt = f"""You are a senior investment analyst drafting an Investment Committee (IC) memo.
 
-Based on the following deterministic evaluation results, draft a structured IC memo.
+Based on the following {ranking_basis} evaluation results, draft a structured IC memo.
 
 ## Evaluation Data
 
@@ -120,7 +147,7 @@ Based on the following deterministic evaluation results, draft a structured IC m
 {group_context_section}
 **Ranked Shortlist ({n_funds} fund(s)):**
 {json.dumps(shortlist_data, indent=2, default=str)}
-{analyst_notes_section}
+{analyst_notes_section}{ai_rationales_section}
 ## Instructions
 
 1. Draft a professional IC memo with sections: Executive Summary, Universe Overview, Top Recommendations, Risk Considerations, Constraint Analysis. This memo covers {scope_description}.

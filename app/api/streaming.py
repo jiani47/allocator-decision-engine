@@ -32,6 +32,29 @@ def memo_stream_sse(
     mandate = request.mandate
     effective_shortlist = group_run.ranked_shortlist[: mandate.shortlist_top_k]
 
+    # If AI ranking is adopted, reorder shortlist by LLM ranks
+    ai_rationales = []
+    if request.use_ai_ranking and group_run.llm_rerank:
+        llm_rank_lookup = {
+            rr.fund_name: rr.llm_rank
+            for rr in group_run.llm_rerank.reranked_funds
+        }
+        # Sort by LLM rank and overwrite the rank field
+        effective_shortlist = sorted(
+            effective_shortlist,
+            key=lambda sf: llm_rank_lookup.get(sf.fund_name, sf.rank),
+        )
+        effective_shortlist = [
+            sf.model_copy(update={"rank": llm_rank_lookup.get(sf.fund_name, sf.rank)})
+            for sf in effective_shortlist
+        ]
+        # Include rationales for funds in the effective shortlist
+        shortlist_names = {sf.fund_name for sf in effective_shortlist}
+        ai_rationales = [
+            rr for rr in group_run.llm_rerank.reranked_funds
+            if rr.fund_name in shortlist_names
+        ]
+
     group_universe = build_group_universe(request.universe, group_run.group)
 
     run_id = str(uuid.uuid4())
@@ -44,6 +67,7 @@ def memo_stream_sse(
         analyst_notes=request.warning_resolutions or None,
         group_name=group_run.group.group_name,
         group_rationale=group_run.group.grouping_rationale,
+        ai_rationales=ai_rationales,
     )
 
     yield _sse_event("progress", {"message": "Generating memo..."})

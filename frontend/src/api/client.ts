@@ -10,6 +10,7 @@ import type {
   FundEligibility,
   FundMetrics,
   GroupRun,
+  LLMReRankResult,
   WarningResolution,
   RawFileContext,
   LLMIngestionResult,
@@ -35,6 +36,10 @@ export interface BenchmarkResponse {
 
 export interface RankResponse {
   group_run: GroupRun
+}
+
+export interface ReRankResponse {
+  llm_rerank: LLMReRankResult
 }
 
 // ---------------------------------------------------------------------------
@@ -105,11 +110,31 @@ export async function rankFunds(
   return handleResponse<RankResponse>(resp)
 }
 
+export async function rerankFunds(
+  groupRun: GroupRun,
+  universe: NormalizedUniverse,
+  mandate: MandateConfig,
+  warningResolutions: WarningResolution[],
+): Promise<ReRankResponse> {
+  const resp = await fetch("/api/rerank", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      group_run: groupRun,
+      universe,
+      mandate,
+      warning_resolutions: warningResolutions,
+    }),
+  })
+  return handleResponse<ReRankResponse>(resp)
+}
+
 export async function* streamMemo(
   groupRun: GroupRun,
   universe: NormalizedUniverse,
   mandate: MandateConfig,
   warningResolutions: WarningResolution[],
+  useAiRanking: boolean = false,
 ): AsyncGenerator<MemoSSEEvent> {
   const resp = await fetch("/api/memo/stream", {
     method: "POST",
@@ -119,6 +144,7 @@ export async function* streamMemo(
       universe,
       mandate,
       warning_resolutions: warningResolutions,
+      use_ai_ranking: useAiRanking,
     }),
   })
 

@@ -25,6 +25,7 @@ from app.core.schemas import (
     FundMetrics,
     GroupRun,
     LLMIngestionResult,
+    LLMReRankResult,
     MandateConfig,
     MemoOutput,
     NormalizedUniverse,
@@ -44,6 +45,7 @@ from app.domains.alt_invest.ingest import (
 from app.domains.alt_invest.raw_parser import parse_raw_file
 from app.llm.anthropic_client import AnthropicClient
 from app.llm.memo_service import generate_memo
+from app.llm.rerank_service import rerank_funds
 
 logger = logging.getLogger("equi.services")
 
@@ -193,6 +195,26 @@ def step_generate_memo(
     client = AnthropicClient(settings)
     memo = generate_memo(client, fact_pack)
     return memo, fact_pack
+
+
+def step_rerank(
+    group_run: GroupRun,
+    universe: NormalizedUniverse,
+    mandate: MandateConfig,
+    settings: Settings,
+    warning_resolutions: list[WarningResolution] | None = None,
+) -> LLMReRankResult:
+    """Re-rank funds using LLM qualitative judgment."""
+    client = AnthropicClient(settings)
+    benchmark_symbol = group_run.group.benchmark_symbol
+    return rerank_funds(
+        client,
+        group_run.ranked_shortlist,
+        universe,
+        mandate,
+        benchmark_symbol=benchmark_symbol,
+        warning_resolutions=warning_resolutions,
+    )
 
 
 def step_create_run(

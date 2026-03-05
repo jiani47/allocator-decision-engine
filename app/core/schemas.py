@@ -318,6 +318,26 @@ class FactPack(BaseModel):
     )
     group_name: str = ""
     group_rationale: str = ""
+    ai_rationales: list["ReRankRationale"] = Field(default_factory=list)
+
+
+class ReRankRationale(BaseModel):
+    """LLM rationale for a single fund's re-ranked position."""
+
+    fund_name: str
+    llm_rank: int
+    deterministic_rank: int
+    rationale: str  # 2-4 sentence explanation
+    key_factors: list[str]  # e.g., ["low_fees", "strategy_fit"]
+    referenced_metric_ids: list[MetricId]
+
+
+class LLMReRankResult(BaseModel):
+    """Structured result from LLM re-ranking."""
+
+    reranked_funds: list[ReRankRationale]
+    overall_commentary: str  # 1-2 paragraph summary
+    model_used: str
 
 
 class GroupRun(BaseModel):
@@ -329,6 +349,7 @@ class GroupRun(BaseModel):
     run_candidates: list[RunCandidate]
     memo: MemoOutput | None = None
     fact_pack: FactPack | None = None
+    llm_rerank: LLMReRankResult | None = None
 
 
 class LLMGroupingResult(BaseModel):
@@ -356,3 +377,7 @@ class DecisionRun(BaseModel):
     fact_pack: FactPack | None = None
     fund_eligibility: list[FundEligibility] = Field(default_factory=list)
     group_runs: list[GroupRun] = Field(default_factory=list)
+
+
+# Rebuild forward references (FactPack references ReRankRationale defined after it)
+FactPack.model_rebuild()

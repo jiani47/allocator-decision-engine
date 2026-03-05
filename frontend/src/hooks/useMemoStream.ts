@@ -27,6 +27,7 @@ export function useMemoStream() {
       universe: NormalizedUniverse,
       mandate: MandateConfig,
       warningResolutions: WarningResolution[],
+      useAiRanking: boolean = false,
     ): Promise<GroupRun | null> => {
       setMemoStreaming(true)
       setStreamingError(null)
@@ -40,6 +41,7 @@ export function useMemoStream() {
           universe,
           mandate,
           warningResolutions,
+          useAiRanking,
         )) {
           switch (event.event) {
             case "progress":
