@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react"
 import { useWizard, DEFAULT_MANDATE, type MandateConfig, type MetricId } from "@/context/WizardContext"
-import { SAMPLE_PORTFOLIOS, type Portfolio } from "@/data/sample-portfolios"
+import { SAMPLE_PORTFOLIOS } from "@/data/sample-portfolios"
 import { PageHeader } from "@/components/PageHeader"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
