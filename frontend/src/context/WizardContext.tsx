@@ -17,6 +17,7 @@ export type MetricId =
   | "sharpe_ratio"
   | "max_drawdown"
   | "benchmark_correlation"
+  | "portfolio_diversification"
 
 export interface RawRow {
   row_index: number
@@ -218,6 +219,14 @@ export interface LLMIngestionResult {
   ambiguities: string[]
 }
 
+export interface PortfolioContext {
+  portfolio_name: string
+  strategy: string
+  aum: number | null
+  holdings: Array<{ fund_name: string; strategy: string; weight: number }>
+  governance: Record<string, unknown>
+}
+
 export interface WarningResolution {
   category: string
   fund_name: string | null
@@ -241,6 +250,7 @@ interface WizardState {
   allocationActive: boolean
   step: number
   highestStepReached: number
+  selectedPortfolioId: string | null
   mandate: MandateConfig | null
   uploadedFileName: string | null
 
@@ -271,6 +281,7 @@ interface WizardState {
 }
 
 interface WizardActions {
+  setSelectedPortfolioId: (id: string | null) => void
   setStep: (step: number) => void
   goForward: () => void
   goBack: () => void
@@ -322,6 +333,7 @@ const DEFAULT_MANDATE: MandateConfig = {
     sharpe_ratio: 0.4,
     max_drawdown: 0.2,
     benchmark_correlation: 0,
+    portfolio_diversification: 0,
   },
   shortlist_top_k: 3,
   strategy_include: [],
@@ -333,6 +345,7 @@ function initialState(): WizardState {
     allocationActive: false,
     step: 0,
     highestStepReached: 0,
+    selectedPortfolioId: null,
     mandate: null,
     uploadedFileName: null,
     rawContext: null,
@@ -386,6 +399,10 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const setSelectedPortfolioId = useCallback(
+    (id: string | null) => setState((prev) => ({ ...prev, selectedPortfolioId: id })),
+    [],
+  )
   const setStep = useCallback(
     (step: number) => setState((prev) => ({
       ...prev,
@@ -544,6 +561,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
   const value = useMemo<WizardContextType>(
     () => ({
       ...state,
+      setSelectedPortfolioId,
       setStep,
       goForward,
       goBack,
@@ -570,6 +588,7 @@ export function WizardProvider({ children }: { children: ReactNode }) {
     }),
     [
       state,
+      setSelectedPortfolioId,
       setStep,
       goForward,
       goBack,

@@ -1,5 +1,6 @@
 import { useEffect, useState, useRef } from "react"
-import { useWizard, type MetricId, type ScoredFund, type ReRankRationale } from "@/context/WizardContext"
+import { useWizard, type MetricId, type ScoredFund, type ReRankRationale, type PortfolioContext } from "@/context/WizardContext"
+import { SAMPLE_PORTFOLIOS } from "@/data/sample-portfolios"
 import { PageHeader } from "@/components/PageHeader"
 import { CalcSheet, SourceData } from "@/components/CalcSheet"
 import { useBenchmark } from "@/hooks/useBenchmark"
@@ -41,6 +42,7 @@ const METRIC_IDS: MetricId[] = [
   "sharpe_ratio",
   "max_drawdown",
   "benchmark_correlation",
+  "portfolio_diversification",
 ]
 
 const METRIC_LABELS: Record<MetricId, string> = {
@@ -49,6 +51,7 @@ const METRIC_LABELS: Record<MetricId, string> = {
   sharpe_ratio: "Sharpe Ratio",
   max_drawdown: "Max Drawdown",
   benchmark_correlation: "Benchmark Corr.",
+  portfolio_diversification: "Portfolio Div.",
 }
 
 export function RankingView() {
@@ -62,6 +65,7 @@ export function RankingView() {
     rawContext,
     warningResolutions,
     fundMetrics,
+    selectedPortfolioId,
     setMandate,
     setBenchmarkSymbol,
     setGroupRuns,
@@ -78,9 +82,13 @@ export function RankingView() {
   const [wSharpe, setWSharpe] = useState(mandate?.weights.sharpe_ratio ?? 0.4)
   const [wDD, setWDD] = useState(mandate?.weights.max_drawdown ?? 0.2)
   const [wCorr, setWCorr] = useState(mandate?.weights.benchmark_correlation ?? 0)
+  const [wDiv, setWDiv] = useState(mandate?.weights.portfolio_diversification ?? 0)
   const [selectedFund, setSelectedFund] = useState<ScoredFund | null>(null)
   const [rankingTab, setRankingTab] = useState<"quantitative" | "ai-assisted">("quantitative")
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Track whether initial ranking has been triggered
+  const initialRanked = useRef(false)
 
   // Auto re-rank when weights change (debounced)
   useEffect(() => {
@@ -92,21 +100,31 @@ export function RankingView() {
       if (wSharpe > 0) newWeights["sharpe_ratio"] = wSharpe
       if (wDD > 0) newWeights["max_drawdown"] = wDD
       if (wCorr > 0) newWeights["benchmark_correlation"] = wCorr
+      if (wDiv > 0) newWeights["portfolio_diversification"] = wDiv
 
       const changed = JSON.stringify(newWeights) !== JSON.stringify(mandate.weights)
       if (changed) {
         setMandate({ ...mandate, weights: newWeights as Record<MetricId, number> })
-        setGroupRuns([])
       }
     }, 500)
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
     }
-  }, [wRet, wSharpe, wDD, wCorr]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [wRet, wSharpe, wDD, wCorr, wDiv]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Trigger ranking when groupRuns is empty and we have all prerequisites
+  // Re-rank when mandate or benchmark changes (keeps stale data visible with loading overlay)
   useEffect(() => {
-    if (universe && mandate && groupRuns.length === 0 && !rankLoading) {
+    if (universe && mandate && !rankLoading) {
+      // Skip the very first render — initial rank is handled below
+      if (!initialRanked.current) return
+      rank()
+    }
+  }, [mandate, benchmark]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Initial ranking on mount
+  useEffect(() => {
+    if (universe && mandate && groupRuns.length === 0 && !rankLoading && !initialRanked.current) {
+      initialRanked.current = true
       rank()
     }
   }, [universe, mandate, groupRuns.length, rankLoading, rank])
@@ -116,12 +134,32 @@ export function RankingView() {
   const handleGenerateMemo = async () => {
     if (!groupRuns[0] || !universe || !mandate) return
     setStep(3)
+
+    let portfolioCtx: PortfolioContext | null = null
+    if (selectedPortfolioId) {
+      const p = SAMPLE_PORTFOLIOS.find((sp) => sp.id === selectedPortfolioId)
+      if (p) {
+        portfolioCtx = {
+          portfolio_name: p.name,
+          strategy: p.strategy,
+          aum: p.aum,
+          holdings: p.holdings.map((h) => ({
+            fund_name: h.fund_name,
+            strategy: h.strategy,
+            weight: h.weight,
+          })),
+          governance: p.governance as unknown as Record<string, unknown>,
+        }
+      }
+    }
+
     const result = await generateMemo(
       groupRuns[0],
       universe,
       mandate,
       warningResolutions,
       useAiRanking,
+      portfolioCtx,
     )
     if (result) {
       setGroupRuns([result])
@@ -129,7 +167,7 @@ export function RankingView() {
   }
 
   const gr = groupRuns[0]
-  const total = wRet + wSharpe + wDD + wCorr
+  const total = wRet + wSharpe + wDD + wCorr + wDiv
 
   // Look up fund data for the detail dialog
   const selectedFundData = selectedFund && universe
@@ -255,6 +293,16 @@ export function RankingView() {
             step={0.05}
           />
         </div>
+        <div>
+          <Label className="text-sm">Portfolio Div.: {wDiv.toFixed(2)}</Label>
+          <Slider
+            value={[wDiv]}
+            onValueChange={([v]) => setWDiv(v)}
+            min={0}
+            max={1}
+            step={0.05}
+          />
+        </div>
       </div>
       {Math.abs(total - 1) > 0.01 && (
         <p className="text-sm text-amber-600 mb-2">
@@ -264,8 +312,7 @@ export function RankingView() {
 
       <Separator className="my-6" />
 
-      {/* Loading / Error */}
-      {rankLoading && <p className="text-sm text-muted-foreground mb-4">Computing metrics and ranking...</p>}
+      {/* Error */}
       {rankError && (
         <Alert variant="destructive" className="mb-4">
           <AlertDescription>{rankError}</AlertDescription>
@@ -273,10 +320,21 @@ export function RankingView() {
       )}
 
       {/* Ranking results */}
-      {gr && (
-        <>
+      {(gr || rankLoading) && (
+        <div className="relative">
+          {rankLoading && (
+            <div className="absolute inset-0 bg-background/60 z-10 flex items-center justify-center rounded-md">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground bg-background px-4 py-2 rounded-md shadow-sm border">
+                <svg className="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+                Re-ranking...
+              </div>
+            </div>
+          )}
           {/* Excluded candidates */}
-          {gr.run_candidates.filter((rc) => !rc.included).length > 0 && (
+          {gr && gr.run_candidates.filter((rc) => !rc.included).length > 0 && (
             <Collapsible className="mb-4">
               <CollapsibleTrigger asChild>
                 <Button variant="ghost" size="sm">
@@ -296,7 +354,7 @@ export function RankingView() {
           )}
 
           {/* Tab toggle when AI re-rank is available */}
-          {gr.llm_rerank && (
+          {gr?.llm_rerank && (
             <Tabs value={rankingTab} onValueChange={(v) => setRankingTab(v as "quantitative" | "ai-assisted")} className="mb-4">
               <TabsList>
                 <TabsTrigger value="quantitative">Quantitative</TabsTrigger>
@@ -313,7 +371,7 @@ export function RankingView() {
           )}
 
           {/* AI-Assisted view */}
-          {rankingTab === "ai-assisted" && gr.llm_rerank && (
+          {rankingTab === "ai-assisted" && gr?.llm_rerank && (
             <>
               <div className="mb-4 rounded-md bg-muted/50 p-4 text-sm whitespace-pre-wrap">
                 {gr.llm_rerank.overall_commentary}
@@ -372,7 +430,7 @@ export function RankingView() {
           )}
 
           {/* Quantitative view (original table) */}
-          {rankingTab === "quantitative" && (
+          {rankingTab === "quantitative" && gr && (
             <div className="mb-6 rounded-md border overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -485,7 +543,7 @@ export function RankingView() {
               </Table>
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* Fund detail dialog */}

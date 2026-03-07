@@ -19,6 +19,7 @@ from app.core.schemas import (
     Claim,
     ConstraintResult,
     DecisionRun,
+    ExistingPortfolio,
     FactPack,
     FundEligibility,
     FundGroup,
@@ -29,6 +30,7 @@ from app.core.schemas import (
     MandateConfig,
     MemoOutput,
     NormalizedUniverse,
+    PortfolioContext,
     RawFileContext,
     RunCandidate,
     ScoredFund,
@@ -107,9 +109,12 @@ def step_compute_metrics(
     universe: NormalizedUniverse,
     benchmark: BenchmarkSeries | None = None,
     min_history_months: int = 12,
+    existing_portfolio: ExistingPortfolio | None = None,
 ) -> list[FundMetrics]:
     """Compute all metrics for universe."""
-    return compute_all_metrics(universe.funds, benchmark, min_history_months)
+    return compute_all_metrics(
+        universe.funds, benchmark, min_history_months, existing_portfolio
+    )
 
 
 def step_classify_eligibility(
@@ -203,6 +208,7 @@ def step_rerank(
     mandate: MandateConfig,
     settings: Settings,
     warning_resolutions: list[WarningResolution] | None = None,
+    portfolio_context: PortfolioContext | None = None,
 ) -> LLMReRankResult:
     """Re-rank funds using LLM qualitative judgment."""
     client = AnthropicClient(settings)
@@ -214,6 +220,7 @@ def step_rerank(
         mandate,
         benchmark_symbol=benchmark_symbol,
         warning_resolutions=warning_resolutions,
+        portfolio_context=portfolio_context,
     )
 
 
@@ -296,6 +303,7 @@ def step_rank_group(
     group: FundGroup,
     mandate: MandateConfig,
     min_history_months: int = 12,
+    existing_portfolio: ExistingPortfolio | None = None,
 ) -> GroupRun:
     """Rank funds within a single group.
 
@@ -312,7 +320,7 @@ def step_rank_group(
 
     # Compute metrics for group's funds
     fund_metrics = step_compute_metrics(
-        group_universe, benchmark, min_history_months
+        group_universe, benchmark, min_history_months, existing_portfolio
     )
 
     # Rank within group

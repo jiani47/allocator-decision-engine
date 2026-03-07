@@ -24,6 +24,7 @@ const METRIC_LABELS: Record<string, string> = {
   sharpe_ratio: "Sharpe Ratio",
   max_drawdown: "Max Drawdown",
   benchmark_correlation: "Benchmark Corr.",
+  portfolio_diversification: "Portfolio Div.",
 }
 
 interface CitationBadgeProps {

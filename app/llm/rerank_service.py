@@ -14,6 +14,7 @@ from app.core.schemas import (
     MandateConfig,
     NormalizedFund,
     NormalizedUniverse,
+    PortfolioContext,
     ScoredFund,
     WarningResolution,
 )
@@ -62,6 +63,7 @@ def _build_rerank_prompt(
     mandate: MandateConfig,
     benchmark_symbol: str | None,
     warning_resolutions: list[WarningResolution] | None,
+    portfolio_context: PortfolioContext | None = None,
 ) -> str:
     """Build the user prompt for re-ranking."""
     fund_lookup: dict[str, NormalizedFund] = {
@@ -132,11 +134,35 @@ def _build_rerank_prompt(
             lines.append(note)
         lines.append("")
 
+    # Portfolio context
+    if portfolio_context:
+        lines.append("## Existing Portfolio Context")
+        lines.append(f"**Portfolio:** {portfolio_context.portfolio_name} ({portfolio_context.strategy})")
+        if portfolio_context.aum:
+            lines.append(f"**AUM:** ${portfolio_context.aum / 1_000_000:.0f}M")
+        lines.append("**Current Holdings:**")
+        for h in portfolio_context.holdings:
+            lines.append(
+                f"- {h.get('fund_name', 'Unknown')} ({h.get('strategy', 'N/A')}): "
+                f"{h.get('weight', 0) * 100:.1f}% allocation"
+            )
+        gov_items = [f"  - {k}: {v}" for k, v in portfolio_context.governance.items() if v is not None]
+        if gov_items:
+            lines.append("**Governance Floors:**")
+            lines.extend(gov_items)
+        lines.append("")
+
     lines.append(
         "Re-rank these funds considering both the quantitative metrics above "
         "and qualitative factors (fees, strategy fit, liquidity, data quality). "
-        "Explain your reasoning for each fund's position change."
     )
+    if portfolio_context:
+        lines.append(
+            "Also consider how each fund fits within the existing portfolio — "
+            "favor funds that improve diversification and avoid strategy overlap "
+            "with current holdings."
+        )
+    lines.append("Explain your reasoning for each fund's position change.")
 
     return "\n".join(lines)
 
@@ -148,10 +174,12 @@ def rerank_funds(
     mandate: MandateConfig,
     benchmark_symbol: str | None = None,
     warning_resolutions: list[WarningResolution] | None = None,
+    portfolio_context: PortfolioContext | None = None,
 ) -> LLMReRankResult:
     """Re-rank funds using LLM. Fail closed on invalid output."""
     prompt = _build_rerank_prompt(
-        ranked_shortlist, universe, mandate, benchmark_symbol, warning_resolutions
+        ranked_shortlist, universe, mandate, benchmark_symbol, warning_resolutions,
+        portfolio_context=portfolio_context,
     )
     raw = client.generate(prompt, RERANK_SYSTEM_PROMPT)
 

@@ -61,7 +61,7 @@ class LLMIngestionResult(BaseModel):
 # ---------------------------------------------------------------------------
 # Metric version — bump when metric formulas change
 # ---------------------------------------------------------------------------
-METRIC_VERSION = "1.0.0"
+METRIC_VERSION = "1.1.0"
 
 
 class ColumnMapping(BaseModel):
@@ -130,6 +130,7 @@ class MetricId(str, Enum):
     SHARPE_RATIO = "sharpe_ratio"
     MAX_DRAWDOWN = "max_drawdown"
     BENCHMARK_CORRELATION = "benchmark_correlation"
+    PORTFOLIO_DIVERSIFICATION = "portfolio_diversification"
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +186,30 @@ class BenchmarkSeries(BaseModel):
     source: str  # "yfinance" or "csv_upload"
 
 
+class PortfolioHolding(BaseModel):
+    """A single holding in the existing portfolio."""
+
+    fund_name: str
+    weight: float  # allocation weight, should sum to ~1.0 across holdings
+    monthly_returns: dict[str, float]  # "YYYY-MM" -> decimal return
+
+
+class ExistingPortfolio(BaseModel):
+    """Existing fund-of-funds portfolio for diversification analysis."""
+
+    holdings: list[PortfolioHolding]
+    name: str = "Existing Portfolio"
+
+
+class PortfolioContext(BaseModel):
+    """Portfolio context for memo generation (governance + holdings summary)."""
+
+    portfolio_name: str
+    strategy: str
+    aum: float | None = None
+    holdings: list[dict] = Field(default_factory=list)  # [{fund_name, strategy, weight}]
+    governance: dict = Field(default_factory=dict)  # governance mandate floors
+
 class ConstraintResult(BaseModel):
     """Result of a single constraint evaluation on a fund."""
 
@@ -211,6 +236,7 @@ class MandateConfig(BaseModel):
             MetricId.SHARPE_RATIO: 0.4,
             MetricId.MAX_DRAWDOWN: 0.2,
             MetricId.BENCHMARK_CORRELATION: 0.0,
+            MetricId.PORTFOLIO_DIVERSIFICATION: 0.0,
         }
     )
     shortlist_top_k: int = 3  # Top N funds included in memo
@@ -321,6 +347,7 @@ class FactPack(BaseModel):
     group_name: str = ""
     group_rationale: str = ""
     ai_rationales: list["ReRankRationale"] = Field(default_factory=list)
+    portfolio_context: PortfolioContext | None = None
 
 
 class ReRankRationale(BaseModel):

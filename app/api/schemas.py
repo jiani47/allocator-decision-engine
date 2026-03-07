@@ -16,6 +16,7 @@ from app.core.schemas import (
     LLMReRankResult,
     MandateConfig,
     NormalizedUniverse,
+    PortfolioContext,
     RawFileContext,
     ScoredFund,
     WarningResolution,
@@ -69,6 +70,7 @@ class RankRequest(BaseModel):
     mandate: MandateConfig
     benchmark: BenchmarkSeries | None = None
     eligibility: list[FundEligibility] = Field(default_factory=list)
+    use_existing_portfolio: bool = False
 
 
 class RankResponse(BaseModel):
@@ -90,6 +92,7 @@ class MemoStreamRequest(BaseModel):
     mandate: MandateConfig
     warning_resolutions: list[WarningResolution] = Field(default_factory=list)
     use_ai_ranking: bool = False
+    portfolio_context: PortfolioContext | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -104,6 +107,7 @@ class ReRankRequest(BaseModel):
     universe: NormalizedUniverse
     mandate: MandateConfig
     warning_resolutions: list[WarningResolution] = Field(default_factory=list)
+    portfolio_context: PortfolioContext | None = None
 
 
 class ReRankResponse(BaseModel):

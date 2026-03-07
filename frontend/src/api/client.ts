@@ -11,6 +11,7 @@ import type {
   FundMetrics,
   GroupRun,
   LLMReRankResult,
+  PortfolioContext,
   WarningResolution,
   RawFileContext,
   LLMIngestionResult,
@@ -105,7 +106,13 @@ export async function rankFunds(
   const resp = await fetch("/api/rank", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ universe, mandate, benchmark, eligibility }),
+    body: JSON.stringify({
+      universe,
+      mandate,
+      benchmark,
+      eligibility,
+      use_existing_portfolio: (mandate.weights.portfolio_diversification ?? 0) > 0,
+    }),
   })
   return handleResponse<RankResponse>(resp)
 }
@@ -115,6 +122,7 @@ export async function rerankFunds(
   universe: NormalizedUniverse,
   mandate: MandateConfig,
   warningResolutions: WarningResolution[],
+  portfolioContext: PortfolioContext | null = null,
 ): Promise<ReRankResponse> {
   const resp = await fetch("/api/rerank", {
     method: "POST",
@@ -124,6 +132,7 @@ export async function rerankFunds(
       universe,
       mandate,
       warning_resolutions: warningResolutions,
+      portfolio_context: portfolioContext,
     }),
   })
   return handleResponse<ReRankResponse>(resp)
@@ -135,6 +144,7 @@ export async function* streamMemo(
   mandate: MandateConfig,
   warningResolutions: WarningResolution[],
   useAiRanking: boolean = false,
+  portfolioContext: PortfolioContext | null = null,
 ): AsyncGenerator<MemoSSEEvent> {
   const resp = await fetch("/api/memo/stream", {
     method: "POST",
@@ -145,6 +155,7 @@ export async function* streamMemo(
       mandate,
       warning_resolutions: warningResolutions,
       use_ai_ranking: useAiRanking,
+      portfolio_context: portfolioContext,
     }),
   })
 

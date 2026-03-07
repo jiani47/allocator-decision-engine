@@ -5,6 +5,7 @@ import type {
   GroupRun,
   NormalizedUniverse,
   MandateConfig,
+  PortfolioContext,
   WarningResolution,
 } from "@/context/WizardContext"
 
@@ -28,6 +29,7 @@ export function useMemoStream() {
       mandate: MandateConfig,
       warningResolutions: WarningResolution[],
       useAiRanking: boolean = false,
+      portfolioContext: PortfolioContext | null = null,
     ): Promise<GroupRun | null> => {
       setMemoStreaming(true)
       setStreamingError(null)
@@ -42,6 +44,7 @@ export function useMemoStream() {
           mandate,
           warningResolutions,
           useAiRanking,
+          portfolioContext,
         )) {
           switch (event.event) {
             case "progress":

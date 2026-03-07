@@ -68,6 +68,7 @@ def memo_stream_sse(
         group_name=group_run.group.group_name,
         group_rationale=group_run.group.grouping_rationale,
         ai_rationales=ai_rationales,
+        portfolio_context=request.portfolio_context,
     )
 
     yield _sse_event("progress", {"message": "Generating memo..."})

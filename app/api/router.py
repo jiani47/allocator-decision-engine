@@ -114,11 +114,18 @@ def rank(request: RankRequest) -> RankResponse:
         grouping_rationale="",
     )
 
+    portfolio = None
+    if request.use_existing_portfolio:
+        from app.core.metrics.portfolio_data import get_default_portfolio
+
+        portfolio = get_default_portfolio()
+
     group_run = step_rank_group(
         request.universe,
         default_group,
         request.mandate,
         min_history_months=request.mandate.min_history_months,
+        existing_portfolio=portfolio,
     )
 
     return RankResponse(group_run=group_run)
@@ -135,6 +142,7 @@ def rerank(request: ReRankRequest) -> ReRankResponse:
             request.mandate,
             settings,
             warning_resolutions=request.warning_resolutions or None,
+            portfolio_context=request.portfolio_context,
         )
     except ReRankError as e:
         raise HTTPException(status_code=502, detail=str(e)) from e

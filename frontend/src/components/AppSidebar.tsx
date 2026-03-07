@@ -8,8 +8,9 @@ import {
 } from "@/components/ui/tooltip"
 import { Button } from "@/components/ui/button"
 import {
-  LayoutList,
-  ClipboardList,
+  Briefcase,
+
+
   TrendingUp,
   LineChart,
   Settings,
@@ -19,7 +20,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 
-export type View = "allocations" | "mandates" | "funds" | "benchmarks" | "settings"
+export type View = "portfolios" | "funds" | "benchmarks" | "settings"
 
 interface NavItem {
   label: string
@@ -28,8 +29,7 @@ interface NavItem {
 }
 
 const NAV_ITEMS: NavItem[] = [
-  { label: "Allocations", icon: LayoutList, view: "allocations" },
-  { label: "Mandates", icon: ClipboardList, view: "mandates" },
+  { label: "Portfolios", icon: Briefcase, view: "portfolios" },
   { label: "Funds", icon: TrendingUp, view: "funds" },
   { label: "Benchmarks", icon: LineChart, view: "benchmarks" },
   { label: "Settings", icon: Settings, view: "settings" },

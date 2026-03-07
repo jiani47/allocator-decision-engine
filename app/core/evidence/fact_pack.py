@@ -10,6 +10,7 @@ from app.core.schemas import (
     MandateConfig,
     MetricId,
     NormalizedUniverse,
+    PortfolioContext,
     ReRankRationale,
     ScoredFund,
     WarningResolution,
@@ -26,6 +27,7 @@ def build_fact_pack(
     group_name: str = "",
     group_rationale: str = "",
     ai_rationales: list[ReRankRationale] | None = None,
+    portfolio_context: PortfolioContext | None = None,
 ) -> FactPack:
     """Assemble the fact pack that the LLM will use."""
     universe_summary = {
@@ -45,6 +47,7 @@ def build_fact_pack(
         group_name=group_name,
         group_rationale=group_rationale,
         ai_rationales=ai_rationales or [],
+        portfolio_context=portfolio_context,
     )
 
 
@@ -132,6 +135,36 @@ AI-assisted order. Incorporate these qualitative insights into the memo's analys
 {chr(10).join(rationale_lines)}
 """
 
+    # Build portfolio context section if present
+    portfolio_context_section = ""
+    if fact_pack.portfolio_context:
+        pc = fact_pack.portfolio_context
+        holdings_lines = []
+        for h in pc.holdings:
+            holdings_lines.append(
+                f"  - {h.get('fund_name', 'Unknown')} ({h.get('strategy', 'N/A')}): "
+                f"{h.get('weight', 0) * 100:.1f}% allocation"
+            )
+        gov_items = []
+        for k, v in pc.governance.items():
+            if v is not None:
+                gov_items.append(f"  - {k}: {v}")
+        portfolio_context_section = f"""
+
+## Portfolio Context
+
+This allocation is being made for **{pc.portfolio_name}** ({pc.strategy}).
+{f"AUM: ${pc.aum / 1_000_000:.0f}M" if pc.aum else ""}
+
+**Current Holdings:**
+{chr(10).join(holdings_lines) if holdings_lines else "  (none)"}
+
+**Governance Mandate Floors:**
+{chr(10).join(gov_items) if gov_items else "  (none)"}
+
+When drafting the memo, consider how new allocations fit within this existing portfolio — discuss diversification benefits, overlap with current holdings, and compliance with governance constraints.
+"""
+
     ranking_basis = "AI-assisted" if fact_pack.ai_rationales else "deterministic"
 
     prompt = f"""You are a senior investment analyst drafting an Investment Committee (IC) memo.
@@ -147,7 +180,7 @@ Based on the following {ranking_basis} evaluation results, draft a structured IC
 {group_context_section}
 **Ranked Shortlist ({n_funds} fund(s)):**
 {json.dumps(shortlist_data, indent=2, default=str)}
-{analyst_notes_section}{ai_rationales_section}
+{analyst_notes_section}{ai_rationales_section}{portfolio_context_section}
 ## Instructions
 
 1. Draft a professional IC memo with sections: Executive Summary, Universe Overview, Top Recommendations, Risk Considerations, Constraint Analysis. This memo covers {scope_description}.
@@ -159,6 +192,7 @@ Based on the following {ranking_basis} evaluation results, draft a structured IC
 7. Format numbers appropriately (percentages for returns/vol/drawdown, ratios for Sharpe).
 8. If analyst data quality notes are provided above, include a "Data Quality Notes" section at the end of the memo summarizing the analyst's review decisions.
 9. In the Top Recommendations section, reference funds by rank (e.g., 'Rank #1'), not by composite score.
+10. If Portfolio Context is provided above, include a "Portfolio Fit" section discussing how recommended funds complement the existing holdings, any strategy overlaps, and governance compliance.
 
 ## Output Format
 
